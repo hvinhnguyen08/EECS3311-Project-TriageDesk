@@ -1,0 +1,85 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 220
+skinparam ParticipantPadding 8
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+hide footbox
+autonumber
+title SD05 - Ask the Agent from the CLI and AI Log Summary (F12, F04)
+actor "SOC Analyst" as Analyst
+boundary ":TriageDeskCli" as TriageDeskCli
+boundary ":MainView" as MainView
+control ":MainController" as MainController
+participant ":SocAssistant" as SocAssistant
+participant ":SocAgent" as SocAgent
+participant "llm:LlmClient" as LlmClient
+participant ":ToolRegistry" as ToolRegistry
+participant "t:CountByTool" as CountByTool
+participant ":EventStore" as EventStore
+
+== F12: ask a question from the CLI ==
+Analyst -> TriageDeskCli : triagedesk ask "Which IPs failed SSH more than 10 times?"
+TriageDeskCli -> TriageDeskCli : ask(question)
+TriageDeskCli -> SocAssistant : ask(question)
+SocAssistant -> EventStore : size()
+note right of EventStore : events saved by earlier import\ncommands are read with load()\nwhen the program starts
+EventStore --> SocAssistant : n
+alt n = 0 (no events loaded)
+  SocAssistant --> TriageDeskCli : "Import a file first"
+else data loaded
+  SocAssistant -> SocAgent : answer(question)
+  SocAgent -> SocAgent : runLoop(system, prompt, toolNames)
+  SocAgent -> ToolRegistry : specs(toolNames)
+  ToolRegistry --> SocAgent : toolSpecs
+  SocAgent -> LlmClient : chat(messages, toolSpecs)
+  LlmClient --> SocAgent : reply: call count_by(srcIp, "Failed password")
+  SocAgent -> ToolRegistry : get(reply.toolName)
+  ToolRegistry --> SocAgent : t
+  SocAgent -> CountByTool : execute(argsJson)
+  CountByTool -> EventStore : countBy("srcIp", criteria)
+  EventStore --> CountByTool : counts
+  CountByTool --> SocAgent : result
+  SocAgent -> LlmClient : chat(messages + result, toolSpecs)
+  LlmClient --> SocAgent : reply: final answer
+  SocAgent --> SocAssistant : r (AgentResult: text, toolTrace)
+  SocAssistant --> TriageDeskCli : r
+end
+TriageDeskCli --> Analyst : print the answer (or message) and tool trace
+note over TriageDeskCli, MainController
+  GUI path of F12 is the same after the facade:
+  ChatView -> ChatController.onAsk(question) -> SocAssistant.ask(question)
+  -> ChatView.showAnswer(r)
+end note
+
+== F04: summarize an imported log from the GUI ==
+Analyst -> MainView : select an imported file, click "Summarize"
+MainView -> MainController : onSummarize(batchId)
+MainController -> SocAssistant : summarizeLog(batchId)
+SocAssistant -> EventStore : getBatch(batchId)
+EventStore --> SocAssistant : events
+alt batch is empty
+  SocAssistant --> MainController : "Empty file" (no LLM call)
+  MainController -> MainView : showMessage("Empty file: nothing to summarize")
+else events present
+  SocAssistant -> SocAgent : summarize(batchId)
+  SocAgent -> SocAgent : runLoop(system, prompt, toolNames)
+  note right of SocAgent : same tool loop as above; count_by and\nsearch_events are limited to this batch
+  SocAgent --> SocAssistant : r (AgentResult: summary, toolTrace)
+  SocAssistant --> MainController : r
+  MainController -> MainView : showSummary(r)
+end
+@enduml

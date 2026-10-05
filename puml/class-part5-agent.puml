@@ -1,0 +1,102 @@
+@startuml
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam nodesep 40
+skinparam ranksep 50
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  ArrowColor #333333
+}
+skinparam package {
+  BackgroundColor #F7F7F7
+  BorderColor #999999
+}
+hide circle
+hide empty members
+
+title Class Diagram Part 5: AI agent
+top to bottom direction
+package "AI agent" {
+class SocAgent <<AI agent>> {
+  - llm : LlmClient
+  - tools : ToolRegistry
+  - maxSteps : int
+  --
+  + triage(c : Case) : TriageVerdict
+  + summarize(batchId : String) : AgentResult
+  + suggestTechniques(c : Case) : List<String>
+  + recommendResponse(c : Case) : ResponsePlan
+  + writeNarrative(c : Case) : String
+  + answer(question : String) : AgentResult
+  - runLoop(system : String, prompt : String, toolNames : List<String>) : AgentResult
+}
+interface LlmClient <<interface>> {
+  + chat(messages : List<String>, toolSpecs : List<String>) : LlmReply
+}
+class OpenAiClient {
+  - baseUrl : String
+  - apiKey : String
+  - model : String
+}
+class MockLlmClient {
+  - scriptedReplies : Queue<LlmReply>
+}
+class LlmReply {
+  - text : String
+  - toolName : String
+  - toolArgs : String
+  --
+  + hasToolCall() : boolean
+}
+class ToolRegistry {
+  - tools : Map<String,Tool>
+  --
+  + register(t : Tool) : void
+  + get(name : String) : Tool
+  + specs(names : List<String>) : List<String>
+}
+interface Tool <<interface>> {
+  + name() : String
+  + description() : String
+  + execute(argsJson : String) : String
+}
+class SearchEventsTool {
+  - store : EventStore
+}
+class CountByTool {
+  - store : EventStore
+}
+class LookupIocTool {
+  - enrichment : EnrichmentService
+}
+}
+package "Defined in another part" {
+class AgentResult #EEEEEE
+class EnrichmentService #EEEEEE
+class EventStore #EEEEEE
+class ResponsePlan #EEEEEE
+class TriageVerdict #EEEEEE
+}
+LlmClient <|.. OpenAiClient
+LlmClient <|.. MockLlmClient
+Tool <|.. SearchEventsTool
+Tool <|.. CountByTool
+Tool <|.. LookupIocTool
+SocAgent "1" --> "1" LlmClient : uses
+SocAgent "1" --> "1" ToolRegistry
+ToolRegistry "1" o-- "*" Tool
+LlmClient ..> LlmReply : returns
+SocAgent ..> AgentResult : creates
+SocAgent ..> TriageVerdict : creates
+SocAgent ..> ResponsePlan : creates
+SocAgent ..> Tool : executes
+SearchEventsTool "*" --> "1" EventStore : receiver
+CountByTool "*" --> "1" EventStore : receiver
+LookupIocTool "*" --> "1" EnrichmentService : receiver
+@enduml

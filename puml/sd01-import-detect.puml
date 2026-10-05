@@ -1,0 +1,85 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 220
+skinparam ParticipantPadding 8
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+hide footbox
+autonumber
+title SD01 - Import a Log File and Run Detections (F01, F02, F03, F05)
+actor "SOC Analyst" as Analyst
+boundary ":MainView" as MainView
+control ":MainController" as MainController
+participant ":SocAssistant" as SocAssistant
+participant ":LogParserFactory" as LogParserFactory
+participant "p:AuthLogParser" as AuthLogParser
+participant ":EventStore" as EventStore
+participant ":DetectionEngine" as DetectionEngine
+participant "d:BruteForceDetector" as BruteForceDetector
+participant ":CaseManager" as CaseManager
+
+Analyst -> MainView : click "Import"
+MainView -> MainController : onImport()
+MainController -> MainView : showImportDialog()
+MainView --> MainController : path
+MainController -> SocAssistant : importFile(path)
+note right of SocAssistant : reads the file's lines;\nbatchId = file name
+SocAssistant -> LogParserFactory : detectFormat(path)
+LogParserFactory --> SocAssistant : format
+alt format supported
+  SocAssistant -> LogParserFactory : createParser(format)
+  LogParserFactory --> SocAssistant : p
+  note right of AuthLogParser : example product: WazuhAlertParser and\nApacheLogParser are created the same way
+  SocAssistant -> AuthLogParser : parse(lines, batchId)
+  AuthLogParser --> SocAssistant : events (bad lines skipped)
+  SocAssistant -> EventStore : addEvents(events)
+  note right of EventStore : kept in memory and saved\nto the data folder
+  SocAssistant --> MainController : count
+  MainController -> MainView : showMessage("N events imported")
+  MainController -> MainView : addImportedFile(batchId)
+else unsupported format
+  SocAssistant --> MainController : UnsupportedFormat error
+  MainController -> MainView : showError("Unsupported file format")
+end
+
+Analyst -> MainView : click "Run Detections"
+MainView -> MainController : onRunDetections()
+MainController -> SocAssistant : runDetections()
+SocAssistant -> EventStore : all()
+EventStore --> SocAssistant : events
+SocAssistant -> DetectionEngine : runAll(events)
+loop each registered Detector (Strategy)
+  DetectionEngine -> BruteForceDetector : detect(events)
+  BruteForceDetector --> DetectionEngine : findings
+end
+note right of BruteForceDetector : the other three detectors\nare called the same way
+DetectionEngine --> SocAssistant : all findings
+alt findings found
+  SocAssistant -> CaseManager : createCases(findings)
+  CaseManager -> CaseManager : groupFindings(findings)
+  loop each group
+    note right of CaseManager : merged into a matching open case,\notherwise a new Case in NewState
+    CaseManager -> CaseManager : computePriority(c)
+    CaseManager -> CaseManager : save(c)
+  end
+  CaseManager --> SocAssistant : cases
+  SocAssistant --> MainController : cases
+  MainController -> MainView : showCases(cases)
+else no findings
+  SocAssistant --> MainController : empty list
+  MainController -> MainView : showMessage("No suspicious activity")
+end
+@enduml

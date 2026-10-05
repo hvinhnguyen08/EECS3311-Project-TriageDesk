@@ -1,0 +1,478 @@
+@startuml
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam nodesep 40
+skinparam ranksep 50
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  ArrowColor #333333
+}
+skinparam package {
+  BackgroundColor #F7F7F7
+  BorderColor #999999
+}
+hide circle
+hide empty members
+
+title TriageDesk - Complete Class Diagram
+left to right direction
+package "GUI (JavaFX): views and controllers" {
+class MainView <<view>> {
+  + showImportDialog() : Path
+  + showCases(cases : List<Case>) : void
+  + addImportedFile(batchId : String) : void
+  + showSummary(r : AgentResult) : void
+  + showMessage(msg : String) : void
+  + showError(msg : String) : void
+}
+class CaseView <<view>> {
+  + render(c : Case) : void
+  + showVerdict(v : TriageVerdict) : void
+  + showPlan(p : ResponsePlan) : void
+  + showReportPath(p : Path) : void
+  + showError(msg : String) : void
+}
+class DashboardView <<view>> {
+  + render(s : DashboardStats) : void
+}
+class ChatView <<view>> {
+  + showAnswer(r : AgentResult) : void
+  + showError(msg : String) : void
+}
+class MainController <<controller>> {
+  - assistant : SocAssistant
+  - view : MainView
+  --
+  + onImport() : void
+  + onRunDetections() : void
+  + onSummarize(batchId : String) : void
+  + onOpenCase(caseId : String) : void
+}
+class CaseController <<controller>> {
+  - assistant : SocAssistant
+  - view : CaseView
+  - caseId : String
+  --
+  + onEnrich() : void
+  + onMapAttack() : void
+  + onTriage() : void
+  + onChangeStatus(action : String, comment : String) : void
+  + onAddNote(text : String) : void
+  + onRecommendResponse() : void
+  + onGenerateReport() : void
+}
+class DashboardController <<controller>> {
+  - assistant : SocAssistant
+  - view : DashboardView
+  --
+  + refresh() : void
+}
+class ChatController <<controller>> {
+  - assistant : SocAssistant
+  - view : ChatView
+  --
+  + onAsk(question : String) : void
+}
+}
+package "CLI" {
+class TriageDeskCli <<CLI (picocli)>> {
+  - assistant : SocAssistant
+  --
+  + main(args : String[]) : void
+  + importFile(path : Path) : int
+  + detect() : int
+  + summarize(batchId : String) : int
+  + enrich(caseId : String) : int
+  + map(caseId : String) : int
+  + triage(caseId : String) : int
+  + status(caseId : String, action : String, comment : String) : int
+  + note(caseId : String, text : String) : int
+  + respond(caseId : String) : int
+  + report(caseId : String, out : Path) : int
+  + ask(question : String) : int
+  + stats() : int
+}
+}
+package "Facade" {
+class SocAssistant <<Facade>> {
+  - eventStore : EventStore
+  - parserFactory : LogParserFactory
+  - detectionEngine : DetectionEngine
+  - caseManager : CaseManager
+  - enrichment : EnrichmentService
+  - attackMapper : AttackMapper
+  - agent : SocAgent
+  - reportGenerator : ReportGenerator
+  --
+  + importFile(path : Path) : int
+  + runDetections() : List<Case>
+  + summarizeLog(batchId : String) : AgentResult
+  + listCases() : List<Case>
+  + getCase(caseId : String) : Case
+  + enrichIocs(caseId : String) : List<Ioc>
+  + mapAttack(caseId : String) : List<AttackTechnique>
+  + triageCase(caseId : String) : TriageVerdict
+  + changeStatus(caseId : String, action : String, comment : String) : Case
+  + addNote(caseId : String, text : String) : Case
+  + recommendResponse(caseId : String) : ResponsePlan
+  + generateReport(caseId : String, out : Path) : Path
+  + ask(question : String) : AgentResult
+  + getDashboardStats() : DashboardStats
+}
+}
+package "Domain" {
+class SecurityEvent {
+  - id : String
+  - batchId : String
+  - timestamp : Instant
+  - source : String
+  - host : String
+  - user : String
+  - srcIp : String
+  - message : String
+  - ruleId : String
+  - ruleLevel : int
+  - mitreIds : List<String>
+}
+class Finding {
+  - detector : String
+  - title : String
+  - severity : String
+  - srcIp : String
+  - host : String
+  - user : String
+  - techniqueIds : List<String>
+  - firstSeen : Instant
+  - lastSeen : Instant
+  - events : List<SecurityEvent>
+}
+class Case {
+  - id : String
+  - title : String
+  - severity : String
+  - priority : int
+  - state : CaseState
+  - findings : List<Finding>
+  - iocs : List<Ioc>
+  - techniques : List<AttackTechnique>
+  - verdict : TriageVerdict
+  - responsePlan : ResponsePlan
+  - notes : List<String>
+  - history : List<String>
+  --
+  + startInvestigation() : void
+  + escalate(reason : String) : void
+  + close(verdict : String, comment : String) : void
+  + reopen() : void
+  + setState(s : CaseState) : void
+  + addNote(text : String) : void
+  + setIocs(iocs : List<Ioc>) : void
+  + setTechniques(t : List<AttackTechnique>) : void
+  + setVerdict(v : TriageVerdict) : void
+  + setResponsePlan(p : ResponsePlan) : void
+  + getEvents() : List<SecurityEvent>
+}
+class Ioc {
+  - type : String
+  - value : String
+  - score : int
+  - source : String
+}
+class TriageVerdict {
+  - verdict : String
+  - confidence : double
+  - reasoning : String
+  - toolTrace : List<String>
+}
+class AttackTechnique {
+  - id : String
+  - name : String
+  - tactic : String
+}
+class ResponsePlan {
+  - steps : List<String>
+  - done : List<Boolean>
+  --
+  + markDone(index : int) : void
+}
+class DashboardStats {
+  - totalEvents : int
+  - topSourceIps : Map<String,Integer>
+  - topUsers : Map<String,Integer>
+  - casesByState : Map<String,Integer>
+}
+class AgentResult {
+  - text : String
+  - toolTrace : List<String>
+  - stoppedEarly : boolean
+}
+}
+package "Case lifecycle" {
+abstract class CaseState <<abstract>> {
+  + startInvestigation(c : Case) : void
+  + escalate(c : Case, reason : String) : void
+  + close(c : Case, verdict : String, comment : String) : void
+  + reopen(c : Case) : void
+  + name() : String
+}
+class NewState {
+  + startInvestigation(c : Case) : void
+  + close(c : Case, verdict : String, comment : String) : void
+  + name() : String
+}
+class InvestigatingState {
+  + escalate(c : Case, reason : String) : void
+  + close(c : Case, verdict : String, comment : String) : void
+  + name() : String
+}
+class EscalatedState {
+  + close(c : Case, verdict : String, comment : String) : void
+  + name() : String
+}
+class ClosedState {
+  + reopen(c : Case) : void
+  + name() : String
+}
+class CaseManager {
+  - cases : Map<String,Case>
+  - dataDir : Path
+  --
+  + createCases(findings : List<Finding>) : List<Case>
+  + getCase(caseId : String) : Case
+  + listCases() : List<Case>
+  + applyAction(caseId : String, action : String, comment : String) : Case
+  + addNote(caseId : String, text : String) : Case
+  + save(c : Case) : void
+  + recordVerdict(caseId : String, v : TriageVerdict) : Case
+  + countByState() : Map<String,Integer>
+  - groupFindings(f : List<Finding>) : List<List<Finding>>
+  - computePriority(c : Case) : int
+}
+}
+package "Log ingestion" {
+class LogParserFactory <<Factory>> {
+  + detectFormat(path : Path) : String
+  + createParser(format : String) : LogParser
+}
+interface LogParser <<interface>> {
+  + parse(lines : List<String>, batchId : String) : List<SecurityEvent>
+}
+class WazuhAlertParser {
+
+}
+class AuthLogParser {
+
+}
+class ApacheLogParser {
+
+}
+class EventStore {
+  - events : List<SecurityEvent>
+  - dataDir : Path
+  --
+  + load() : void
+  + addEvents(events : List<SecurityEvent>) : void
+  + all() : List<SecurityEvent>
+  + getBatch(batchId : String) : List<SecurityEvent>
+  + search(criteria : Map<String,String>) : List<SecurityEvent>
+  + countBy(field : String, criteria : Map<String,String>) : Map<String,Integer>
+  + size() : int
+}
+}
+package "Detection" {
+class DetectionEngine {
+  - detectors : List<Detector>
+  --
+  + register(d : Detector) : void
+  + runAll(events : List<SecurityEvent>) : List<Finding>
+}
+interface Detector <<interface>> {
+  + detect(events : List<SecurityEvent>) : List<Finding>
+}
+class WazuhAlertDetector {
+  - minLevel : int
+}
+class BruteForceDetector {
+  - threshold : int
+  - window : Duration
+}
+class SuccessAfterFailureDetector {
+  - minFailures : int
+}
+class WebScanDetector {
+  - notFoundThreshold : int
+}
+}
+package "Threat intel, ATT&CK and report" {
+class EnrichmentService {
+  - providers : List<ThreatIntelProvider>
+  - cache : Map<String,Integer>
+  --
+  + enrich(c : Case) : List<Ioc>
+  + lookup(ioc : Ioc) : Ioc
+  - extractIocs(c : Case) : List<Ioc>
+}
+interface ThreatIntelProvider <<interface>> {
+  + supports(type : String) : boolean
+  + lookup(value : String) : int
+}
+class AbuseIpDbAdapter {
+  - apiKey : String
+  - http : HttpClient
+  --
+  - parseScore(json : String) : int
+}
+class VirusTotalAdapter {
+  - apiKey : String
+  - http : HttpClient
+  --
+  - parseScore(json : String) : int
+}
+class AbuseIpDbApi <<external REST API>> {
+  GET /api/v2/check
+}
+class VirusTotalApi <<external REST API>> {
+  GET /api/v3/{ip|domain|file}
+}
+class AttackMapper {
+  - catalog : Map<String,AttackTechnique>
+  - agent : SocAgent
+  --
+  + map(c : Case) : List<AttackTechnique>
+  + find(id : String) : AttackTechnique
+}
+class ReportGenerator {
+  + generate(c : Case, narrative : String, out : Path) : Path
+  - buildTimeline(c : Case) : String
+}
+}
+package "AI agent" {
+class SocAgent <<AI agent>> {
+  - llm : LlmClient
+  - tools : ToolRegistry
+  - maxSteps : int
+  --
+  + triage(c : Case) : TriageVerdict
+  + summarize(batchId : String) : AgentResult
+  + suggestTechniques(c : Case) : List<String>
+  + recommendResponse(c : Case) : ResponsePlan
+  + writeNarrative(c : Case) : String
+  + answer(question : String) : AgentResult
+  - runLoop(system : String, prompt : String, toolNames : List<String>) : AgentResult
+}
+interface LlmClient <<interface>> {
+  + chat(messages : List<String>, toolSpecs : List<String>) : LlmReply
+}
+class OpenAiClient {
+  - baseUrl : String
+  - apiKey : String
+  - model : String
+}
+class MockLlmClient {
+  - scriptedReplies : Queue<LlmReply>
+}
+class LlmReply {
+  - text : String
+  - toolName : String
+  - toolArgs : String
+  --
+  + hasToolCall() : boolean
+}
+class ToolRegistry {
+  - tools : Map<String,Tool>
+  --
+  + register(t : Tool) : void
+  + get(name : String) : Tool
+  + specs(names : List<String>) : List<String>
+}
+interface Tool <<interface>> {
+  + name() : String
+  + description() : String
+  + execute(argsJson : String) : String
+}
+class SearchEventsTool {
+  - store : EventStore
+}
+class CountByTool {
+  - store : EventStore
+}
+class LookupIocTool {
+  - enrichment : EnrichmentService
+}
+}
+CaseState <|-- NewState
+CaseState <|-- InvestigatingState
+CaseState <|-- EscalatedState
+CaseState <|-- ClosedState
+LogParser <|.. WazuhAlertParser
+LogParser <|.. AuthLogParser
+LogParser <|.. ApacheLogParser
+Detector <|.. WazuhAlertDetector
+Detector <|.. BruteForceDetector
+Detector <|.. SuccessAfterFailureDetector
+Detector <|.. WebScanDetector
+ThreatIntelProvider <|.. AbuseIpDbAdapter
+ThreatIntelProvider <|.. VirusTotalAdapter
+LlmClient <|.. OpenAiClient
+LlmClient <|.. MockLlmClient
+Tool <|.. SearchEventsTool
+Tool <|.. CountByTool
+Tool <|.. LookupIocTool
+MainController "1" -- "1" MainView : events / updates
+MainController "*" --> "1" SocAssistant
+CaseController "1" -- "1" CaseView : events / updates
+CaseController "*" --> "1" SocAssistant
+DashboardController "1" -- "1" DashboardView : events / updates
+DashboardController "*" --> "1" SocAssistant
+ChatController "1" -- "1" ChatView : events / updates
+ChatController "*" --> "1" SocAssistant
+TriageDeskCli "1" --> "1" SocAssistant
+SocAssistant "1" --> "1" EventStore
+SocAssistant "1" --> "1" LogParserFactory
+SocAssistant "1" --> "1" DetectionEngine
+SocAssistant "1" --> "1" CaseManager
+SocAssistant "1" --> "1" EnrichmentService
+SocAssistant "1" --> "1" AttackMapper
+SocAssistant "1" --> "1" SocAgent
+SocAssistant "1" --> "1" ReportGenerator
+Case "1" *-- "1..*" Finding
+Finding "*" o-- "1..*" SecurityEvent : evidence
+Case "1" *-- "*" Ioc
+Case "*" o-- "*" AttackTechnique
+Case "1" *-- "0..1" TriageVerdict
+Case "1" *-- "0..1" ResponsePlan
+Case "1" --> "1" CaseState : current state
+CaseManager "1" *-- "*" Case
+LogParserFactory ..> LogParser : creates
+LogParser ..> SecurityEvent : creates
+SocAssistant ..> LogParser : uses
+SocAssistant ..> DashboardStats : creates
+SocAssistant ..> ToolRegistry : creates tools, registers them
+EventStore "1" *-- "*" SecurityEvent
+DetectionEngine "1" o-- "1..*" Detector
+Detector ..> Finding : creates
+EnrichmentService "1" o-- "1..*" ThreatIntelProvider
+EnrichmentService ..> Ioc : creates
+AbuseIpDbAdapter ..> AbuseIpDbApi : adapts
+VirusTotalAdapter ..> VirusTotalApi : adapts
+AttackMapper "1" *-- "*" AttackTechnique
+AttackMapper "1" --> "1" SocAgent : fallback
+ReportGenerator ..> Case : reads
+SocAgent "1" --> "1" LlmClient : uses
+SocAgent "1" --> "1" ToolRegistry
+ToolRegistry "1" o-- "*" Tool
+LlmClient ..> LlmReply : returns
+SocAgent ..> AgentResult : creates
+SocAgent ..> TriageVerdict : creates
+SocAgent ..> ResponsePlan : creates
+SocAgent ..> Tool : executes
+SearchEventsTool "*" --> "1" EventStore : receiver
+CountByTool "*" --> "1" EventStore : receiver
+LookupIocTool "*" --> "1" EnrichmentService : receiver
+@enduml

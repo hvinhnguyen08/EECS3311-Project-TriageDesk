@@ -1,0 +1,63 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 220
+skinparam ParticipantPadding 8
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+hide footbox
+autonumber
+title SD04 - Change Case Status and Add a Note (F09)
+actor "SOC Analyst" as Analyst
+boundary ":CaseView" as CaseView
+control ":CaseController" as CaseController
+participant ":SocAssistant" as SocAssistant
+participant ":CaseManager" as CaseManager
+participant "c:Case" as Case
+participant "s:CaseState\n(current state)" as CaseState
+
+Analyst -> CaseView : choose "Escalate", enter reason
+CaseView -> CaseController : onChangeStatus("ESCALATE", reason)
+CaseController -> SocAssistant : changeStatus(caseId, "ESCALATE", reason)
+SocAssistant -> CaseManager : applyAction(caseId, "ESCALATE", reason)
+CaseManager -> Case : escalate(reason)
+Case -> CaseState : escalate(c, reason)
+alt s is InvestigatingState (it overrides escalate)
+  CaseState -> Case : setState(new EscalatedState())
+  CaseState --> Case : ok (reason added to history)
+  Case --> CaseManager : ok
+  CaseManager -> CaseManager : save(c)
+  CaseManager --> SocAssistant : c
+  SocAssistant --> CaseController : c
+  CaseController -> CaseView : render(c)
+else any other state (the inherited default refuses)
+  CaseState --> Case : InvalidTransitionException
+  Case --> CaseManager : exception
+  CaseManager --> SocAssistant : exception
+  SocAssistant --> CaseController : exception
+  CaseController -> CaseView : showError("Action not allowed in this state")
+end
+
+Analyst -> CaseView : type a note, click "Add"
+CaseView -> CaseController : onAddNote(text)
+CaseController -> SocAssistant : addNote(caseId, text)
+SocAssistant -> CaseManager : addNote(caseId, text)
+CaseManager -> Case : addNote(text)
+CaseManager -> CaseManager : save(c)
+CaseManager --> SocAssistant : c
+SocAssistant --> CaseController : c
+CaseController -> CaseView : render(c)
+note over Case : close(), reopen() and startInvestigation() are\ndelegated to the current CaseState the same way.
+@enduml
