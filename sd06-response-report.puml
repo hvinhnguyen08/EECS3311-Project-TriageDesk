@@ -1,0 +1,73 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 220
+skinparam ParticipantPadding 8
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+hide footbox
+autonumber
+title SD06 - Response Recommendations and Incident Report (F10, F11)
+actor "SOC Analyst" as Analyst
+boundary ":CaseView" as CaseView
+control ":CaseController" as CaseController
+participant ":SocAssistant" as SocAssistant
+participant ":CaseManager" as CaseManager
+participant "c:Case" as Case
+participant ":SocAgent" as SocAgent
+participant ":ReportGenerator" as ReportGenerator
+
+Analyst -> CaseView : click "Recommend Response"
+CaseView -> CaseController : onRecommendResponse()
+CaseController -> SocAssistant : recommendResponse(caseId)
+SocAssistant -> CaseManager : getCase(caseId)
+CaseManager --> SocAssistant : c
+alt case has no verdict
+  SocAssistant --> CaseController : error
+  CaseController -> CaseView : showError("Run AI Triage first")
+else verdict present
+  SocAssistant -> SocAgent : recommendResponse(c)
+  note right of SocAgent : agent loop as in SD03
+  SocAgent --> SocAssistant : plan (ResponsePlan)
+  SocAssistant -> Case : setResponsePlan(plan)
+  SocAssistant -> CaseManager : save(c)
+  SocAssistant --> CaseController : plan
+  CaseController -> CaseView : showPlan(plan)
+end
+
+Analyst -> CaseView : click "Generate Report"
+CaseView -> CaseController : onGenerateReport()
+note right of CaseController : out = reports/<caseId>.md\n(the CLI passes -o instead)
+CaseController -> SocAssistant : generateReport(caseId, out)
+SocAssistant -> CaseManager : getCase(caseId)
+CaseManager --> SocAssistant : c
+SocAssistant -> SocAgent : writeNarrative(c)
+alt LLM available
+  SocAgent --> SocAssistant : narrative
+else LLM unavailable
+  SocAgent --> SocAssistant : "[AI narrative unavailable]"
+end
+SocAssistant -> ReportGenerator : generate(c, narrative, out)
+ReportGenerator -> ReportGenerator : buildTimeline(c)
+alt file written
+  ReportGenerator --> SocAssistant : report path
+  SocAssistant --> CaseController : path
+  CaseController -> CaseView : showReportPath(path)
+else write error
+  ReportGenerator --> SocAssistant : IOException
+  SocAssistant --> CaseController : error
+  CaseController -> CaseView : showError("Could not write report")
+end
+@enduml
