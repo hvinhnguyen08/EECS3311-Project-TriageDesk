@@ -1,0 +1,229 @@
+package ca.yorku.triagedesk.cli;
+
+import ca.yorku.triagedesk.config.AppConfig;
+import ca.yorku.triagedesk.domain.Case;
+import ca.yorku.triagedesk.domain.DashboardStats;
+import ca.yorku.triagedesk.domain.Finding;
+import ca.yorku.triagedesk.facade.DetectionResult;
+import ca.yorku.triagedesk.facade.ImportResult;
+import ca.yorku.triagedesk.facade.SocAssistant;
+import java.io.PrintWriter;
+import java.nio.file.Path;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
+import picocli.CommandLine;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Option;
+import picocli.CommandLine.Parameters;
+import picocli.CommandLine.Spec;
+
+/**
+ * Command-line interface. Like the GUI controllers, every command only calls the
+ * SocAssistant facade and prints the result. Each run is a new process, so the
+ * facade loads the events and cases saved in the data folder.
+ */
+@Command(name = "triagedesk", mixinStandardHelpOptions = true, version = "TriageDesk 0.1.0",
+        description = "AI assistant for SOC alert triage and log analysis.")
+public class TriageDeskCli implements Runnable {
+
+    private static final int TITLE_WIDTH = 80;
+
+    @Spec
+    CommandSpec spec;
+
+    @Option(names = {"-d", "--data-dir"}, paramLabel = "DIR",
+            description = "Folder for imported events and cases (default: TRIAGEDESK_DATA_DIR or ./data).")
+    Path dataDir;
+
+    private final Supplier<AppConfig> configSupplier;
+    private SocAssistant assistant;
+
+    public TriageDeskCli() {
+        this(AppConfig::load);
+    }
+
+    public TriageDeskCli(Supplier<AppConfig> configSupplier) {
+        this.configSupplier = configSupplier;
+    }
+
+    public static void main(String[] args) {
+        System.exit(commandLine(new TriageDeskCli()).execute(args));
+    }
+
+    /** Builds the picocli command line; errors are printed as one "Error: ..." line with exit code 1. */
+    public static CommandLine commandLine(TriageDeskCli cli) {
+        CommandLine cl = new CommandLine(cli);
+        cl.setExecutionExceptionHandler((ex, commandLine, parseResult) -> {
+            commandLine.getErr().println("Error: " + (ex.getMessage() != null ? ex.getMessage() : ex.toString()));
+            return 1;
+        });
+        return cl;
+    }
+
+    @Override
+    public void run() {
+        spec.commandLine().usage(out());
+    }
+
+    // F01, F02
+
+    @Command(name = "import", description = "Import Wazuh alerts.json, Linux auth.log or Apache/Nginx access-log files.")
+    int importFile(@Parameters(paramLabel = "FILE", arity = "1..*", description = "Files to import.") List<Path> files) {
+        int exitCode = 0;
+        for (Path file : files) {
+            try {
+                ImportResult r = assistant().importFile(file);
+                out().printf("Imported %d events from %s (%s format), skipped %d unreadable lines%n",
+                        r.imported(), r.batchId(), r.format(), r.skipped());
+            } catch (IllegalArgumentException e) {
+                err().println("Error: " + e.getMessage());
+                exitCode = 1;
+            }
+        }
+        return exitCode;
+    }
+
+    // F03, F05
+
+    @Command(name = "detect", description = "Run the detection rules and group the findings into prioritised cases.")
+    int detect() {
+        DetectionResult r = assistant().runDetections();
+        r.warnings().forEach(w -> err().println("Warning: " + w));
+        if (r.findings() == 0) {
+            out().println("No suspicious activity found.");
+            return 0;
+        }
+        out().printf("Detectors found %d findings.%n", r.findings());
+        if (r.cases().isEmpty()) {
+            out().println("No new cases: every finding is already part of an existing case.");
+        } else {
+            out().printf("%d case(s) created or updated:%n", r.cases().size());
+            printCaseTable(r.cases());
+        }
+        return 0;
+    }
+
+    @Command(name = "cases", description = "List all cases, highest priority first.")
+    int cases() {
+        List<Case> cases = assistant().listCases();
+        if (cases.isEmpty()) {
+            out().println("No cases yet. Import files, then run: triagedesk detect");
+        } else {
+            printCaseTable(cases);
+        }
+        return 0;
+    }
+
+    @Command(name = "show", description = "Show the details of one case.")
+    int show(@Parameters(paramLabel = "CASE_ID") String caseId) {
+        Case c = assistant().getCase(caseId);
+        PrintWriter out = out();
+        out.printf("%s  [%s]  %s  priority %d%n", c.getId(), c.getState().name(), c.getSeverity(), c.getPriority());
+        out.println("Title:   " + c.getTitle());
+        out.println("Created: " + c.getCreatedAt());
+        if (c.getResolution() != null) {
+            out.println("Closed as: " + c.getResolution());
+        }
+        out.printf("%nFindings (%d):%n", c.getFindings().size());
+        Set<String> techniqueIds = new LinkedHashSet<>();
+        for (Finding f : c.getFindings()) {
+            int n = f.events().size();
+            out.printf("  - [%s] %s %s .. %s, %d %s%n      %s%n", f.detector(), f.severity(),
+                    f.firstSeen(), f.lastSeen(), n, n == 1 ? "event" : "events", f.title());
+            techniqueIds.addAll(f.techniqueIds());
+        }
+        out.println();
+        out.println("ATT&CK technique IDs from detections: " + (techniqueIds.isEmpty() ? "none" : String.join(", ", techniqueIds)));
+        out.println("AI verdict: " + (c.getVerdict() == null ? "not triaged yet"
+                : String.format(Locale.ROOT, "%s (confidence %.2f)", c.getVerdict().verdict(), c.getVerdict().confidence())));
+        out.println("Allowed actions: " + String.join(", ", c.getState().allowedActions()));
+        printList(out, "Notes", c.getNotes());
+        printList(out, "History", c.getHistory());
+        return 0;
+    }
+
+    // F09
+
+    @Command(name = "status", description = "Change a case's status: start, escalate, close or reopen.")
+    int status(@Parameters(index = "0", paramLabel = "CASE_ID") String caseId,
+               @Parameters(index = "1", paramLabel = "ACTION", description = "start, escalate, close or reopen") String action,
+               @Option(names = {"-m", "--comment"}, paramLabel = "TEXT",
+                       description = "Reason (escalate) or comment (close).") String comment,
+               @Option(names = "--as", paramLabel = "RESOLUTION",
+                       description = "For close: true_positive, false_positive or benign.") String resolution) {
+        Case c = assistant().changeStatus(caseId, action, resolution, comment);
+        out().printf("%s is now %s.%n", c.getId(), c.getState().name());
+        return 0;
+    }
+
+    @Command(name = "note", description = "Add a timestamped note to a case.")
+    int note(@Parameters(index = "0", paramLabel = "CASE_ID") String caseId,
+             @Parameters(index = "1..*", arity = "1..*", paramLabel = "TEXT") List<String> words) {
+        Case c = assistant().addNote(caseId, String.join(" ", words));
+        out().printf("Note added to %s (%d notes).%n", c.getId(), c.getNotes().size());
+        return 0;
+    }
+
+    // F13
+
+    @Command(name = "stats", description = "Show totals for the imported events and the case queue.")
+    int stats() {
+        DashboardStats s = assistant().getDashboardStats();
+        PrintWriter out = out();
+        if (s.isEmpty()) {
+            out.println("No data. Import a file to begin.");
+            return 0;
+        }
+        out.println("Total events:   " + s.totalEvents());
+        out.println("Imported files: " + String.join(", ", assistant().listBatches()));
+        printCounts(out, "Top source IPs", s.topSourceIps());
+        printCounts(out, "Top users", s.topUsers());
+        printCounts(out, "Cases by state", s.casesByState());
+        return 0;
+    }
+
+    private SocAssistant assistant() {
+        if (assistant == null) {
+            AppConfig config = configSupplier.get();
+            assistant = dataDir != null ? SocAssistant.create(config, dataDir) : SocAssistant.create(config);
+        }
+        return assistant;
+    }
+
+    private void printCaseTable(List<Case> cases) {
+        PrintWriter out = out();
+        out.printf("%-10s %-13s %-8s %3s %4s  %s%n", "ID", "STATE", "SEVERITY", "PRI", "FIND", "TITLE");
+        for (Case c : cases) {
+            String title = c.getTitle().length() > TITLE_WIDTH
+                    ? c.getTitle().substring(0, TITLE_WIDTH - 3) + "..." : c.getTitle();
+            out.printf("%-10s %-13s %-8s %3d %4d  %s%n", c.getId(), c.getState().name(), c.getSeverity(),
+                    c.getPriority(), c.getFindings().size(), title);
+        }
+    }
+
+    private static void printList(PrintWriter out, String heading, List<String> items) {
+        out.printf("%n%s (%d):%n", heading, items.size());
+        items.forEach(i -> out.println("  " + i));
+    }
+
+    private static void printCounts(PrintWriter out, String heading, Map<String, Integer> counts) {
+        out.printf("%n%s:%n", heading);
+        if (counts.isEmpty()) {
+            out.println("  (none)");
+        }
+        counts.forEach((k, v) -> out.printf("  %-20s %6d%n", k, v));
+    }
+
+    private PrintWriter out() {
+        return spec.commandLine().getOut();
+    }
+
+    private PrintWriter err() {
+        return spec.commandLine().getErr();
+    }
+}

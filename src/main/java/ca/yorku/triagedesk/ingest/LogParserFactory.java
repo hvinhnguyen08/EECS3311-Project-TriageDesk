@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 
 /**
@@ -19,6 +22,18 @@ public class LogParserFactory {
 
     /** How many non-blank lines are inspected before giving up. */
     private static final int SAMPLE_LINES = 20;
+
+    private final ZoneId syslogZone;
+
+    /** Reads syslog (auth.log) times as UTC. */
+    public LogParserFactory() {
+        this(ZoneOffset.UTC);
+    }
+
+    /** @param syslogZone time zone for auth.log lines, which do not include one */
+    public LogParserFactory(ZoneId syslogZone) {
+        this.syslogZone = syslogZone;
+    }
 
     public String detectFormat(Path path) throws IOException {
         return detectFormat(readLines(path));
@@ -53,7 +68,7 @@ public class LogParserFactory {
         }
         return switch (format) {
             case WAZUH -> new WazuhAlertParser();
-            case AUTH -> new AuthLogParser();
+            case AUTH -> new AuthLogParser(Clock.systemUTC(), syslogZone);
             case APACHE -> new ApacheLogParser();
             default -> throw new UnsupportedFormatException("Unsupported file format: " + format);
         };

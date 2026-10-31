@@ -1,0 +1,3 @@
+# Launcher scripts need their platform's line endings
+triagedesk text eol=lf
+*.cmd text eol=crlf

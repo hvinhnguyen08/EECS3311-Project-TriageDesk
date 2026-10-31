@@ -5,7 +5,10 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DateTimeException;
 import java.time.Duration;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +29,7 @@ public final class AppConfig {
     private final String abuseIpDbApiKey;
     private final String virusTotalApiKey;
     private final Path dataDir;
+    private final ZoneId logTimeZone;
     private final int wazuhMinLevel;
     private final int bruteForceThreshold;
     private final Duration bruteForceWindow;
@@ -43,6 +47,7 @@ public final class AppConfig {
         this.abuseIpDbApiKey = cleanKey(values.get("ABUSEIPDB_API_KEY"));
         this.virusTotalApiKey = cleanKey(values.get("VIRUSTOTAL_API_KEY"));
         this.dataDir = Path.of(values.getOrDefault("TRIAGEDESK_DATA_DIR", "./data").trim());
+        this.logTimeZone = parseZone(values.get("LOG_TIMEZONE"));
         this.wazuhMinLevel = parsePositiveInt(values.get("DETECT_WAZUH_MIN_LEVEL"), 7);
         this.bruteForceThreshold = parsePositiveInt(values.get("DETECT_BRUTE_FORCE_THRESHOLD"), 10);
         this.bruteForceWindow = Duration.ofMinutes(parsePositiveInt(values.get("DETECT_BRUTE_FORCE_WINDOW_MINUTES"), 5));
@@ -115,6 +120,19 @@ public final class AppConfig {
         return key.strip();
     }
 
+    /** Syslog lines carry no time zone; servers usually log in UTC, so UTC is the default. */
+    private static ZoneId parseZone(String value) {
+        if (value == null || value.isBlank()) {
+            return ZoneOffset.UTC;
+        }
+        try {
+            return ZoneId.of(value.strip());
+        } catch (DateTimeException e) {
+            throw new IllegalArgumentException("LOG_TIMEZONE is not a valid time zone: " + value
+                    + " (examples: UTC, America/Toronto)");
+        }
+    }
+
     private static int parsePositiveInt(String value, int fallback) {
         if (value == null || value.isBlank()) {
             return fallback;
@@ -135,6 +153,7 @@ public final class AppConfig {
     public String getAbuseIpDbApiKey() { return abuseIpDbApiKey; }
     public String getVirusTotalApiKey() { return virusTotalApiKey; }
     public Path getDataDir() { return dataDir; }
+    public ZoneId getLogTimeZone() { return logTimeZone; }
     public int getWazuhMinLevel() { return wazuhMinLevel; }
     public int getBruteForceThreshold() { return bruteForceThreshold; }
     public Duration getBruteForceWindow() { return bruteForceWindow; }

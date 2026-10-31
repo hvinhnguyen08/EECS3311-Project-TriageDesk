@@ -34,14 +34,55 @@ Environment variables with the same names override the values in `.env`.
 
 ```
 mvn test
+mvn package
 ```
 
-GUI and CLI launch commands will be added here as those parts are implemented.
+`mvn package` runs the tests and builds `target/triagedesk.jar` with all dependencies.
+
+### Command-line interface
+
+Run the CLI with `.\triagedesk.cmd` on Windows (PowerShell needs the `.\`) or `./triagedesk` on macOS/Linux. Both run `java -jar target/triagedesk.jar`, so `java` must be on your PATH. The examples below write `triagedesk` for short. Data is kept in `./data` unless `TRIAGEDESK_DATA_DIR` or `--data-dir DIR` says otherwise, so each command sees what earlier commands imported.
+
+| Command | Feature | Example |
+|---|---|---|
+| `import FILE...` | F01, F02 | `triagedesk import samples/alerts.json samples/auth.log samples/access.log` |
+| `detect` | F03, F05 | `triagedesk detect` |
+| `cases` | F05 | `triagedesk cases` |
+| `show CASE_ID` | F05, F09 | `triagedesk show CASE-0001` |
+| `status CASE_ID ACTION [-m TEXT] [--as RESOLUTION]` | F09 | `triagedesk status CASE-0001 escalate -m "deploy account compromised"`<br>`triagedesk status CASE-0002 close --as true_positive -m "Blocked at the WAF"` |
+| `note CASE_ID TEXT...` | F09 | `triagedesk note CASE-0001 Disabled the deploy account` |
+| `stats` | F13 | `triagedesk stats` |
+
+`triagedesk --help` and `triagedesk COMMAND --help` describe every option. Errors are printed as one `Error: ...` line and the command exits with code 1.
+
+Example session on the sample data:
+
+```
+> triagedesk import samples/alerts.json samples/auth.log samples/access.log
+Imported 12 events from alerts.json (wazuh format), skipped 0 unreadable lines
+Imported 35 events from auth.log (auth format), skipped 0 unreadable lines
+Imported 51 events from access.log (apache format), skipped 0 unreadable lines
+> triagedesk detect
+Detectors found 8 findings.
+3 case(s) created or updated:
+ID         STATE         SEVERITY PRI FIND  TITLE
+CASE-0001  NEW           HIGH      80    4  Brute force from 203.0.113.7: 13 failed logins in 2m31s against 4 accounts (+...
+CASE-0003  NEW           CRITICAL  80    1  Wazuh rule 510 (level 12): Host-based anomaly detection event (rootcheck): Tr...
+CASE-0002  NEW           HIGH      75    3  Wazuh rule 31151 (level 10): Web server 400 error code: multiple attempts fro...
+> triagedesk status CASE-0001 escalate -m "too early"
+Error: Cannot escalate a case that is NEW. Allowed: start, close
+> triagedesk status CASE-0001 start
+CASE-0001 is now INVESTIGATING.
+```
+
+Closing accepts `tp` and `fp` as short forms of `true_positive` and `false_positive`.
 
 ### Project layout
 
 | Package | Contents |
 |---|---|
+| `ca.yorku.triagedesk.cli` | `TriageDeskCli`: picocli command-line interface |
+| `ca.yorku.triagedesk.facade` | `SocAssistant` (Facade): one method per feature, used by the CLI and the GUI |
 | `ca.yorku.triagedesk.config` | `AppConfig`: loads `.env` and environment variables |
 | `ca.yorku.triagedesk.domain` | `SecurityEvent`, `Finding`, `Case`, `Ioc`, `AttackTechnique`, `TriageVerdict`, `ResponsePlan`, `DashboardStats`, `AgentResult`, `Severity`, `Verdict` |
 | `ca.yorku.triagedesk.ingest` | `LogParserFactory` (Factory Method), `LogParser` and `WazuhAlertParser`, `AuthLogParser`, `ApacheLogParser`; `EventStore` (events in memory and in `data/events.jsonl`) |

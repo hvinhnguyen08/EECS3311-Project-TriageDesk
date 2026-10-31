@@ -54,8 +54,8 @@ public abstract class CaseState {
     protected static void closeCase(Case c, String verdict, String comment) {
         Verdict resolution = Verdict.parse(verdict);
         if (resolution == Verdict.NEEDS_REVIEW) {
-            throw new IllegalArgumentException(
-                    "Close the case as true_positive, false_positive or benign (got: " + verdict + ")");
+            throw new IllegalArgumentException("Close the case as true_positive, false_positive or benign"
+                    + (verdict == null || verdict.isBlank() ? "" : " (got: " + verdict + ")"));
         }
         if (comment == null || comment.isBlank()) {
             throw new IllegalArgumentException("A comment is required to close a case");

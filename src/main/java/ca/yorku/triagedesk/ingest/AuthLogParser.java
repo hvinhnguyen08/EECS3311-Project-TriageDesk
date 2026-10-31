@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,9 +43,9 @@ public class AuthLogParser implements LogParser {
     private final Clock clock;
     private final ZoneId zone;
 
-    /** Classic syslog lines have no year or zone: the current year and the system zone are assumed. */
+    /** Classic syslog lines have no year or zone: the current year is assumed and times are read in UTC. */
     public AuthLogParser() {
-        this(Clock.systemDefaultZone(), ZoneId.systemDefault());
+        this(Clock.systemUTC(), ZoneOffset.UTC);
     }
 
     public AuthLogParser(Clock clock, ZoneId zone) {

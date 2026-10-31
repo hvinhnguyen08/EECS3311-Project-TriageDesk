@@ -15,7 +15,8 @@ public record DashboardStats(
         casesByState = casesByState == null ? Map.of() : casesByState;
     }
 
+    /** True when nothing has been imported and there are no cases (the state counts may all be zero). */
     public boolean isEmpty() {
-        return totalEvents == 0 && casesByState.isEmpty();
+        return totalEvents == 0 && casesByState.values().stream().allMatch(n -> n == null || n == 0);
     }
 }

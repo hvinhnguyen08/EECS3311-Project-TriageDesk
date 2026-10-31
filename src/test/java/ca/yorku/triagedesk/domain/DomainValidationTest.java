@@ -15,6 +15,8 @@ class DomainValidationTest {
     void verdictParsingIsLenientAndFallsBackToNeedsReview() {
         assertEquals(Verdict.TRUE_POSITIVE, Verdict.parse("true positive"));
         assertEquals(Verdict.FALSE_POSITIVE, Verdict.parse(" False-Positive "));
+        assertEquals(Verdict.TRUE_POSITIVE, Verdict.parse("tp"));
+        assertEquals(Verdict.FALSE_POSITIVE, Verdict.parse("FP"));
         assertEquals(Verdict.NEEDS_REVIEW, Verdict.parse("probably bad"));
         assertEquals(Verdict.NEEDS_REVIEW, Verdict.parse(null));
     }
