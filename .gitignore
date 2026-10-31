@@ -1,0 +1,19 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+config.local.json
+
+# Build output
+target/
+
+# Runtime data written by the application
+data/
+reports/
+
+# IDE and OS files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+__MACOSX/
