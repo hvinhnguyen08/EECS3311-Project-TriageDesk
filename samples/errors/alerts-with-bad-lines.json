@@ -1,0 +1,5 @@
+{"timestamp":"2026-10-28T09:15:52.871+0000","rule":{"level":10,"description":"sshd: brute force trying to get access to the system. Authentication failed.","id":"5763","mitre":{"id":["T1110"]},"groups":["syslog","sshd","authentication_failures"]},"agent":{"id":"001","name":"web01"},"id":"1761642952.2003","data":{"srcip":"203.0.113.7","dstuser":"deploy"}}
+{"timestamp":"2026-10-28T09:16:10.020+0000","rule":{"level":10,"description":"sshd: brute force trying to get acc
+this line is not JSON at all
+{"rule":{"level":5,"description":"Alert without a timestamp","id":"5710"}}
+{"timestamp":"2026-10-28T09:17:05.233+0000","rule":{"level":3,"description":"sshd: authentication success.","id":"5715","groups":["syslog","sshd","authentication_success"]},"agent":{"id":"001","name":"web01"},"id":"1761643025.2004","data":{"srcip":"203.0.113.7","dstuser":"deploy"}}

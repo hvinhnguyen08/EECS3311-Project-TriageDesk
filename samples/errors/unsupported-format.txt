@@ -1,0 +1,3 @@
+Shift notes, 28 October
+- Check the firewall change request from yesterday
+- Ask the network team about the VPN certificate renewal

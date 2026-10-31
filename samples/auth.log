@@ -1,0 +1,35 @@
+Oct 28 08:55:01 web01 CRON[1802]: pam_unix(cron:session): session opened for user root(uid=0) by (uid=0)
+Oct 28 08:55:01 web01 CRON[1802]: pam_unix(cron:session): session closed for user root
+Oct 28 09:02:14 web01 sshd[2101]: Accepted publickey for alice from 192.168.1.20 port 50122 ssh2: ED25519 SHA256:3fQk2bS0xYd1sample
+Oct 28 09:02:14 web01 sshd[2101]: pam_unix(sshd:session): session opened for user alice(uid=1001) by (uid=0)
+Oct 28 09:05:40 web01 sudo:    alice : TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx
+Oct 28 09:05:40 web01 sudo: pam_unix(sudo:session): session opened for user root(uid=0) by alice(uid=1001)
+Oct 28 09:14:02 web01 sshd[2211]: Failed password for root from 203.0.113.7 port 52144 ssh2
+Oct 28 09:14:09 web01 sshd[2211]: Failed password for root from 203.0.113.7 port 52144 ssh2
+Oct 28 09:14:17 web01 sshd[2214]: Failed password for root from 203.0.113.7 port 52160 ssh2
+Oct 28 09:14:30 web01 sshd[2219]: Invalid user admin from 203.0.113.7 port 52178
+Oct 28 09:14:31 web01 sshd[2219]: Failed password for invalid user admin from 203.0.113.7 port 52178 ssh2
+Oct 28 09:14:44 web01 sshd[2219]: Failed password for invalid user admin from 203.0.113.7 port 52178 ssh2
+Oct 28 09:14:58 web01 sshd[2225]: Invalid user oracle from 203.0.113.7 port 52190
+Oct 28 09:14:59 web01 sshd[2225]: Failed password for invalid user oracle from 203.0.113.7 port 52190 ssh2
+Oct 28 09:15:12 web01 sshd[2230]: Failed password for deploy from 203.0.113.7 port 52210 ssh2
+Oct 28 09:15:25 web01 sshd[2230]: Failed password for deploy from 203.0.113.7 port 52210 ssh2
+Oct 28 09:15:39 web01 sshd[2236]: Failed password for deploy from 203.0.113.7 port 52244 ssh2
+Oct 28 09:15:52 web01 sshd[2236]: Failed password for deploy from 203.0.113.7 port 52244 ssh2
+Oct 28 09:16:06 web01 sshd[2241]: Failed password for root from 203.0.113.7 port 52280 ssh2
+Oct 28 09:16:19 web01 sshd[2241]: Failed password for deploy from 203.0.113.7 port 52280 ssh2
+Oct 28 09:16:33 web01 sshd[2247]: Failed password for deploy from 203.0.113.7 port 52302 ssh2
+Oct 28 09:17:05 web01 sshd[2260]: Accepted password for deploy from 203.0.113.7 port 52388 ssh2
+Oct 28 09:17:05 web01 sshd[2260]: pam_unix(sshd:session): session opened for user deploy(uid=1002) by (uid=0)
+Oct 28 09:17:41 web01 sudo:   deploy : user NOT in sudoers ; TTY=pts/1 ; PWD=/home/deploy ; USER=root ; COMMAND=/bin/bash
+Oct 28 09:18:20 web01 sshd[2260]: Received disconnect from 203.0.113.7 port 52388:11: disconnected by user
+Oct 28 09:18:20 web01 sshd[2260]: pam_unix(sshd:session): session closed for user deploy
+Oct 28 10:02:33 web01 sshd[2390]: Failed password for bob from 192.168.1.35 port 50433 ssh2
+Oct 28 10:02:41 web01 sshd[2390]: Accepted password for bob from 192.168.1.35 port 50433 ssh2
+Oct 28 10:02:41 web01 sshd[2390]: pam_unix(sshd:session): session opened for user bob(uid=1003) by (uid=0)
+Oct 28 11:20:15 web01 sshd[2450]: Failed password for root from 198.51.100.44 port 41022 ssh2
+Oct 28 11:20:19 web01 sshd[2450]: Failed password for root from 198.51.100.44 port 41022 ssh2
+Oct 28 11:20:24 web01 sshd[2450]: Failed password for root from 198.51.100.44 port 41022 ssh2
+Oct 28 11:20:24 web01 sshd[2450]: Connection closed by authenticating user root 198.51.100.44 port 41022 [preauth]
+Oct 28 12:00:01 web01 CRON[2601]: pam_unix(cron:session): session opened for user root(uid=0) by (uid=0)
+Oct 28 12:00:02 web01 CRON[2601]: pam_unix(cron:session): session closed for user root
