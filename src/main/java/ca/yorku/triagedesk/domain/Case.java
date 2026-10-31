@@ -1,5 +1,7 @@
 package ca.yorku.triagedesk.domain;
 
+import ca.yorku.triagedesk.casemgmt.CaseState;
+import ca.yorku.triagedesk.casemgmt.NewState;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -16,6 +18,10 @@ import java.util.Objects;
  * A group of related findings that the analyst investigates as one unit. Everything the
  * analyst or the agent adds to the case (IOCs, techniques, verdict, plan, notes) is
  * recorded in its history.
+ *
+ * <p>Context of the State pattern: the lifecycle actions (startInvestigation, escalate,
+ * close, reopen) are delegated to the current {@link CaseState}, which performs the
+ * transition or refuses it.
  */
 public class Case {
 
@@ -23,6 +29,8 @@ public class Case {
     private final String title;
     private final Clock clock;
     private final Instant createdAt;
+    private CaseState state = new NewState();
+    private Verdict resolution;
     private Severity severity;
     private int priority;
     private final List<Finding> findings = new ArrayList<>();
@@ -83,6 +91,8 @@ public class Case {
         if (s.history() != null) {
             this.history.addAll(s.history());
         }
+        this.state = CaseState.fromName(s.state());
+        this.resolution = s.resolution();
     }
 
     /** Everything needed to save the case and restore it later (a plain record that JSON libraries can handle). */
@@ -99,7 +109,9 @@ public class Case {
             List<String> responseSteps,
             List<Boolean> responseDone,
             List<String> notes,
-            List<String> history) {
+            List<String> history,
+            String state,
+            Verdict resolution) {
     }
 
     public Snapshot snapshot() {
@@ -107,7 +119,36 @@ public class Case {
                 verdict,
                 responsePlan == null ? null : responsePlan.getSteps(),
                 responsePlan == null ? null : List.copyOf(responsePlan.getDone()),
-                List.copyOf(notes), List.copyOf(history));
+                List.copyOf(notes), List.copyOf(history), state.name(), resolution);
+    }
+
+    // Lifecycle actions: the current state decides whether they are allowed and what comes next.
+
+    public void startInvestigation() {
+        state.startInvestigation(this);
+    }
+
+    public void escalate(String reason) {
+        state.escalate(this, reason);
+    }
+
+    /** Closes the case as true_positive, false_positive or benign; a comment is required. */
+    public void close(String verdict, String comment) {
+        state.close(this, verdict, comment);
+    }
+
+    public void reopen() {
+        state.reopen(this);
+    }
+
+    /** Called by the CaseState objects to perform a transition. */
+    public void setState(CaseState s) {
+        this.state = Objects.requireNonNull(s, "state");
+    }
+
+    /** Called by the CaseState objects when the case is closed (or reopened, with null). */
+    public void setResolution(Verdict resolution) {
+        this.resolution = resolution;
     }
 
     public static Case fromSnapshot(Snapshot s) {
@@ -186,6 +227,10 @@ public class Case {
     public String getId() { return id; }
     public String getTitle() { return title; }
     public Instant getCreatedAt() { return createdAt; }
+    public CaseState getState() { return state; }
+    public boolean isClosed() { return state.isClosed(); }
+    /** How the analyst closed the case, or null while it is open. */
+    public Verdict getResolution() { return resolution; }
     public Severity getSeverity() { return severity; }
     public int getPriority() { return priority; }
     public List<Finding> getFindings() { return Collections.unmodifiableList(findings); }

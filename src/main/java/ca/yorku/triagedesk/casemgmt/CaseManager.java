@@ -3,6 +3,7 @@ package ca.yorku.triagedesk.casemgmt;
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.Finding;
 import ca.yorku.triagedesk.domain.SecurityEvent;
+import ca.yorku.triagedesk.domain.TriageVerdict;
 import ca.yorku.triagedesk.util.Json;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -127,6 +128,67 @@ public class CaseManager {
         return c;
     }
 
+    /** Applies start, escalate or reopen (see {@link CaseActions}); the comment is the escalation reason. */
+    public synchronized Case applyAction(String caseId, String action, String comment) {
+        return applyAction(caseId, action, null, comment);
+    }
+
+    /**
+     * Applies a lifecycle action and saves the case. For "close", {@code resolution} is
+     * true_positive, false_positive or benign and a comment is required.
+     *
+     * @throws InvalidTransitionException if the current state does not allow the action (case unchanged)
+     * @throws IllegalArgumentException   for an unknown case or action, or missing input (case unchanged)
+     */
+    public synchronized Case applyAction(String caseId, String action, String resolution, String comment) {
+        Case c = getCase(caseId);
+        String a = action == null ? "" : action.strip().toLowerCase(Locale.ROOT);
+        switch (a) {
+            case CaseActions.START -> c.startInvestigation();
+            case CaseActions.ESCALATE -> c.escalate(comment);
+            case CaseActions.CLOSE -> c.close(resolution, comment);
+            case CaseActions.REOPEN -> c.reopen();
+            default -> throw new IllegalArgumentException(
+                    "Unknown action '" + action + "'. Use one of: " + String.join(", ", CaseActions.ALL));
+        }
+        warnings.clear();
+        save(c);
+        return c;
+    }
+
+    /** Adds a timestamped note and saves the case; an empty note is rejected. */
+    public synchronized Case addNote(String caseId, String text) {
+        Case c = getCase(caseId);
+        c.addNote(text);
+        warnings.clear();
+        save(c);
+        return c;
+    }
+
+    /** Stores the AI verdict; a NEW case moves to INVESTIGATING (someone is now looking at it). */
+    public synchronized Case recordVerdict(String caseId, TriageVerdict v) {
+        Case c = getCase(caseId);
+        c.setVerdict(v);
+        if (NewState.NAME.equals(c.getState().name())) {
+            c.startInvestigation();
+        }
+        warnings.clear();
+        save(c);
+        return c;
+    }
+
+    /** Number of cases in each state, always listing all four states in lifecycle order. */
+    public synchronized Map<String, Integer> countByState() {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String name : List.of(NewState.NAME, InvestigatingState.NAME, EscalatedState.NAME, ClosedState.NAME)) {
+            counts.put(name, 0);
+        }
+        for (Case c : cases.values()) {
+            counts.merge(c.getState().name(), 1, Integer::sum);
+        }
+        return counts;
+    }
+
     /** All cases, highest priority first. */
     public synchronized List<Case> listCases() {
         return sortByPriority(new ArrayList<>(cases.values()));
@@ -212,9 +274,10 @@ public class CaseManager {
         return false;
     }
 
+    /** The first open case related to the finding; closed cases are never extended. */
     private Case findRelatedCase(Finding f) {
         for (Case c : cases.values()) {
-            if (related(c.getFindings(), f)) {
+            if (!c.isClosed() && related(c.getFindings(), f)) {
                 return c;
             }
         }

@@ -46,7 +46,7 @@ GUI and CLI launch commands will be added here as those parts are implemented.
 | `ca.yorku.triagedesk.domain` | `SecurityEvent`, `Finding`, `Case`, `Ioc`, `AttackTechnique`, `TriageVerdict`, `ResponsePlan`, `DashboardStats`, `AgentResult`, `Severity`, `Verdict` |
 | `ca.yorku.triagedesk.ingest` | `LogParserFactory` (Factory Method), `LogParser` and `WazuhAlertParser`, `AuthLogParser`, `ApacheLogParser`; `EventStore` (events in memory and in `data/events.jsonl`) |
 | `ca.yorku.triagedesk.detect` | `DetectionEngine` (Strategy context) and the `Detector` strategies `WazuhAlertDetector`, `BruteForceDetector`, `SuccessAfterFailureDetector`, `WebScanDetector` |
-| `ca.yorku.triagedesk.casemgmt` | `CaseManager`: groups findings into prioritised cases and saves each case to `data/cases/CASE-nnnn.json` |
+| `ca.yorku.triagedesk.casemgmt` | `CaseManager`: groups findings into prioritised cases, applies lifecycle actions and notes, and saves each case to `data/cases/CASE-nnnn.json`; `CaseState` and `NewState`, `InvestigatingState`, `EscalatedState`, `ClosedState` (State pattern) |
 | `ca.yorku.triagedesk.util` | `Json`: shared Jackson configuration |
 
 ### Detection rules
@@ -63,6 +63,17 @@ On the three sample files together the detectors produce 8 findings: 5 Wazuh ale
 ### Cases
 
 Related findings share a case: the same source IP, or the same host for a finding without an IP, within 60 minutes. A case's severity is the highest of its findings; its priority (0 to 100) is 20 per severity level plus 5 per extra finding (at most 15) plus 5 when more than one detector agrees. Running detections again does not duplicate anything. The 8 sample findings become 3 cases: the SSH compromise of `deploy` on web01 (4 findings, priority 80), the rootkit alert on db01 (CRITICAL, 80) and the web scan and SQL injection from 198.51.100.23 (3 findings, 75).
+
+### Case lifecycle
+
+| State | Allowed actions | Next state |
+|---|---|---|
+| NEW | `start`, `close` | INVESTIGATING, CLOSED |
+| INVESTIGATING | `escalate` (reason required), `close` | ESCALATED, CLOSED |
+| ESCALATED | `close` | CLOSED |
+| CLOSED | `reopen` | INVESTIGATING |
+
+Closing requires a resolution (`true_positive`, `false_positive` or `benign`) and a comment. Any other action is refused with a message listing the allowed ones, and the case is left unchanged. Recording an AI verdict moves a NEW case to INVESTIGATING. Every transition and note is timestamped in the case history.
 
 ### Supported input formats and sample data
 
