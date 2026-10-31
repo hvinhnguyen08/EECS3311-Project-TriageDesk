@@ -45,7 +45,19 @@ GUI and CLI launch commands will be added here as those parts are implemented.
 | `ca.yorku.triagedesk.config` | `AppConfig`: loads `.env` and environment variables |
 | `ca.yorku.triagedesk.domain` | `SecurityEvent`, `Finding`, `Case`, `Ioc`, `AttackTechnique`, `TriageVerdict`, `ResponsePlan`, `DashboardStats`, `AgentResult`, `Severity`, `Verdict` |
 | `ca.yorku.triagedesk.ingest` | `LogParserFactory` (Factory Method), `LogParser` and `WazuhAlertParser`, `AuthLogParser`, `ApacheLogParser`; `EventStore` (events in memory and in `data/events.jsonl`) |
+| `ca.yorku.triagedesk.detect` | `DetectionEngine` (Strategy context) and the `Detector` strategies `WazuhAlertDetector`, `BruteForceDetector`, `SuccessAfterFailureDetector`, `WebScanDetector` |
 | `ca.yorku.triagedesk.util` | `Json`: shared Jackson configuration |
+
+### Detection rules
+
+| Detector | Fires when (defaults, configurable in `.env`) | Severity | ATT&CK |
+|---|---|---|---|
+| `WazuhAlertDetector` | Wazuh alert with rule level 7 or higher (`DETECT_WAZUH_MIN_LEVEL`); repeated alerts of one rule for one IP/host are merged | from rule level | from the alert |
+| `BruteForceDetector` | 10 or more failed logins from one IP within 5 minutes (`DETECT_BRUTE_FORCE_*`) | HIGH | T1110.001 |
+| `SuccessAfterFailureDetector` | a successful login from an IP with 5 or more failures in the previous 10 minutes (`DETECT_SUCCESS_AFTER_FAILURE_*`) | HIGH | T1110, T1078 |
+| `WebScanDetector` | 30 or more HTTP 404 responses to one IP within 2 minutes (`DETECT_WEB_SCAN_*`) | MEDIUM | T1595.003 |
+
+On the three sample files together the detectors produce 8 findings: 5 Wazuh alerts, the SSH brute force and the successful `deploy` login from 203.0.113.7, and the web scan from 198.51.100.23.
 
 ### Supported input formats and sample data
 
