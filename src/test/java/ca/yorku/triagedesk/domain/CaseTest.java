@@ -69,6 +69,22 @@ class CaseTest {
     }
 
     @Test
+    void snapshotRestoresTheCaseWithoutNewHistory() {
+        Case c = new Case("CASE-1", "x", List.of(finding(Severity.HIGH, event("e1", 0))), CLOCK);
+        c.setPriority(60);
+        c.addNote("checked");
+        c.setVerdict(new TriageVerdict(Verdict.TRUE_POSITIVE, 0.8, "r", List.of("count_by")));
+        c.setResponsePlan(new ResponsePlan(List.of("Block IP", "Reset password")));
+        c.getResponsePlan().markDone(1);
+
+        Case restored = Case.fromSnapshot(c.snapshot(), CLOCK);
+
+        assertEquals(c.snapshot(), restored.snapshot());
+        assertTrue(restored.getResponsePlan().isDone(1));
+        assertEquals(c.getHistory().size(), restored.getHistory().size());
+    }
+
+    @Test
     void changesAreRecordedInHistory() {
         Case c = new Case("CASE-1", "x", List.of(finding(Severity.LOW, event("e1", 0))), CLOCK);
 

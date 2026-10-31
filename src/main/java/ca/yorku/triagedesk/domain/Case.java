@@ -53,6 +53,71 @@ public class Case {
         recordHistory("Case created from " + findings.size() + " finding(s)");
     }
 
+    /** Restores a saved case exactly as it was, without adding history entries. */
+    private Case(Snapshot s, Clock clock) {
+        this.id = Objects.requireNonNull(s.id(), "id");
+        this.title = Objects.requireNonNull(s.title(), "title");
+        this.clock = clock;
+        this.createdAt = Objects.requireNonNull(s.createdAt(), "createdAt");
+        this.severity = s.severity() != null ? s.severity() : Severity.LOW;
+        this.priority = s.priority();
+        if (s.findings() == null || s.findings().isEmpty()) {
+            throw new IllegalArgumentException("A case needs at least one finding");
+        }
+        this.findings.addAll(s.findings());
+        this.iocs = s.iocs() == null ? List.of() : List.copyOf(s.iocs());
+        this.techniques = s.techniques() == null ? List.of() : List.copyOf(s.techniques());
+        this.verdict = s.verdict();
+        if (s.responseSteps() != null && !s.responseSteps().isEmpty()) {
+            this.responsePlan = new ResponsePlan(s.responseSteps());
+            List<Boolean> done = s.responseDone() == null ? List.of() : s.responseDone();
+            for (int i = 0; i < done.size() && i < s.responseSteps().size(); i++) {
+                if (Boolean.TRUE.equals(done.get(i))) {
+                    responsePlan.markDone(i);
+                }
+            }
+        }
+        if (s.notes() != null) {
+            this.notes.addAll(s.notes());
+        }
+        if (s.history() != null) {
+            this.history.addAll(s.history());
+        }
+    }
+
+    /** Everything needed to save the case and restore it later (a plain record that JSON libraries can handle). */
+    public record Snapshot(
+            String id,
+            String title,
+            Instant createdAt,
+            Severity severity,
+            int priority,
+            List<Finding> findings,
+            List<Ioc> iocs,
+            List<AttackTechnique> techniques,
+            TriageVerdict verdict,
+            List<String> responseSteps,
+            List<Boolean> responseDone,
+            List<String> notes,
+            List<String> history) {
+    }
+
+    public Snapshot snapshot() {
+        return new Snapshot(id, title, createdAt, severity, priority, List.copyOf(findings), iocs, techniques,
+                verdict,
+                responsePlan == null ? null : responsePlan.getSteps(),
+                responsePlan == null ? null : List.copyOf(responsePlan.getDone()),
+                List.copyOf(notes), List.copyOf(history));
+    }
+
+    public static Case fromSnapshot(Snapshot s) {
+        return fromSnapshot(s, Clock.systemUTC());
+    }
+
+    public static Case fromSnapshot(Snapshot s, Clock clock) {
+        return new Case(s, Objects.requireNonNull(clock, "clock"));
+    }
+
     /** Adds a related finding to an existing case; the case severity becomes the highest of its findings. */
     public void addFinding(Finding f) {
         findings.add(Objects.requireNonNull(f, "finding"));

@@ -46,6 +46,7 @@ GUI and CLI launch commands will be added here as those parts are implemented.
 | `ca.yorku.triagedesk.domain` | `SecurityEvent`, `Finding`, `Case`, `Ioc`, `AttackTechnique`, `TriageVerdict`, `ResponsePlan`, `DashboardStats`, `AgentResult`, `Severity`, `Verdict` |
 | `ca.yorku.triagedesk.ingest` | `LogParserFactory` (Factory Method), `LogParser` and `WazuhAlertParser`, `AuthLogParser`, `ApacheLogParser`; `EventStore` (events in memory and in `data/events.jsonl`) |
 | `ca.yorku.triagedesk.detect` | `DetectionEngine` (Strategy context) and the `Detector` strategies `WazuhAlertDetector`, `BruteForceDetector`, `SuccessAfterFailureDetector`, `WebScanDetector` |
+| `ca.yorku.triagedesk.casemgmt` | `CaseManager`: groups findings into prioritised cases and saves each case to `data/cases/CASE-nnnn.json` |
 | `ca.yorku.triagedesk.util` | `Json`: shared Jackson configuration |
 
 ### Detection rules
@@ -58,6 +59,10 @@ GUI and CLI launch commands will be added here as those parts are implemented.
 | `WebScanDetector` | 30 or more HTTP 404 responses to one IP within 2 minutes (`DETECT_WEB_SCAN_*`) | MEDIUM | T1595.003 |
 
 On the three sample files together the detectors produce 8 findings: 5 Wazuh alerts, the SSH brute force and the successful `deploy` login from 203.0.113.7, and the web scan from 198.51.100.23.
+
+### Cases
+
+Related findings share a case: the same source IP, or the same host for a finding without an IP, within 60 minutes. A case's severity is the highest of its findings; its priority (0 to 100) is 20 per severity level plus 5 per extra finding (at most 15) plus 5 when more than one detector agrees. Running detections again does not duplicate anything. The 8 sample findings become 3 cases: the SSH compromise of `deploy` on web01 (4 findings, priority 80), the rootkit alert on db01 (CRITICAL, 80) and the web scan and SQL injection from 198.51.100.23 (3 findings, 75).
 
 ### Supported input formats and sample data
 
