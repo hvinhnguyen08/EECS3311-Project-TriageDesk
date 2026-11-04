@@ -1,8 +1,10 @@
 package ca.yorku.triagedesk.cli;
 
 import ca.yorku.triagedesk.agent.TokenUsage;
+import ca.yorku.triagedesk.attack.MappingResult;
 import ca.yorku.triagedesk.config.AppConfig;
 import ca.yorku.triagedesk.domain.AgentResult;
+import ca.yorku.triagedesk.domain.AttackTechnique;
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.DashboardStats;
 import ca.yorku.triagedesk.domain.Finding;
@@ -143,6 +145,10 @@ public class TriageDeskCli implements Runnable {
         }
         out.println();
         out.println("ATT&CK technique IDs from detections: " + (techniqueIds.isEmpty() ? "none" : String.join(", ", techniqueIds)));
+        if (!c.getTechniques().isEmpty()) {
+            out.println("ATT&CK techniques:");
+            c.getTechniques().forEach(t -> out.printf("  %-10s %s (%s)%n", t.id(), t.name(), t.tactic()));
+        }
         if (!c.getIocs().isEmpty()) {
             out.println("Indicators:");
             printIocs(out, c.getIocs());
@@ -192,6 +198,29 @@ public class TriageDeskCli implements Runnable {
             return 0;
         }
         printIocs(out(), iocs);
+        return 0;
+    }
+
+    // F08
+
+    @Command(name = "map", description = "Map a case to MITRE ATT&CK techniques (detections first, the AI agent if needed).")
+    int map(@Parameters(paramLabel = "CASE_ID") String caseId,
+            @Option(names = "--ai", description = "Also ask the AI agent for techniques the detections did not tag.")
+            boolean askAgent) {
+        MappingResult r = assistant().mapAttack(caseId, askAgent);
+        PrintWriter out = out();
+        if (r.techniques().isEmpty()) {
+            out.println("No ATT&CK techniques could be mapped.");
+        } else {
+            out.printf("  %-10s %-9s %-40s %s%n", "ID", "SOURCE", "TECHNIQUE", "TACTICS");
+            for (AttackTechnique t : r.techniques()) {
+                out.printf("  %-10s %-9s %-40s %s%n", t.id(), r.sourceOf(t.id()), t.name(), t.tactic());
+            }
+        }
+        if (!r.rejected().isEmpty()) {
+            out.println("Not in the ATT&CK catalogue, ignored: " + String.join(", ", r.rejected()));
+        }
+        printUsage(out);
         return 0;
     }
 

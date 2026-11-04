@@ -45,6 +45,17 @@ final class Prompts {
             active IPs/users/hosts with their counts, anything suspicious, and what the analyst should look at first.
             State only facts that come from tool results.""";
 
+    static final String ATTACK = """
+            You are TriageDesk, an assistant that maps a security case to MITRE ATT&CK Enterprise techniques.
+            Read the case facts and choose the techniques that the evidence actually shows, including what the \
+            attacker did after initial access (for example account manipulation, privilege escalation attempts, \
+            persistence). Use the tools to check activity on the same host and account after the last finding; \
+            host events such as sudo and file changes have no source IP, so search them by host and user. \
+            Look at file paths too (for example a changed .ssh/authorized_keys file). Prefer sub-technique IDs \
+            such as T1110.001 when the evidence is specific enough.
+            Use only real ATT&CK technique IDs and suggest at most 6. Reply with ONLY this JSON object:
+            {"techniques": [{"id": "T1098.004", "reason": "<one sentence citing the evidence>"}]}""";
+
     static final String ANSWER = """
             You are TriageDesk, an assistant that answers a SOC analyst's questions about the imported security \
             events. Use the tools to get the facts; never guess numbers, IP addresses or names. Combine several \

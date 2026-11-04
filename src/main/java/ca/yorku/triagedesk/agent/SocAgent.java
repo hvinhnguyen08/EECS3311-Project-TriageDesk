@@ -10,11 +10,15 @@ import ca.yorku.triagedesk.util.Json;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The AI agent. Its loop sends a task and the tools allowed for it to the model; when the
@@ -30,6 +34,10 @@ public class SocAgent {
     private static final int TRACE_RESULT_CHARS = 120;
     /** How many evidence events are put in the triage prompt; the model can fetch more with tools. */
     static final int EVIDENCE_SAMPLE = 12;
+
+    static final int MAX_SUGGESTED_TECHNIQUES = 8;
+    private static final Pattern TECHNIQUE_ID =
+            Pattern.compile("(?i)\\bT\\d{4}(?:\\.\\d{3})?\\b");
 
     static final String STEP_LIMIT_PROMPT = "You have reached the limit of tool calls for this task."
             + " Answer now using only the information you already have, and say what you could not check.";
@@ -65,6 +73,36 @@ public class SocAgent {
                 + "\n\nThe evidence sample shows at most " + EVIDENCE_SAMPLE + " events; use the tools to look further.";
         AgentResult r = runLoop(Prompts.TRIAGE, prompt, tools, available(INVESTIGATION_TOOLS));
         return parseVerdict(r);
+    }
+
+    // F08
+
+    /**
+     * Suggests ATT&CK technique IDs for a case. The model gets the case facts and the event
+     * tools, so it can check what happened after the detected activity. The IDs are not
+     * trusted here; AttackMapper keeps only the ones in its catalogue.
+     *
+     * @throws LlmException if the model cannot be reached
+     */
+    public List<String> suggestTechniques(Case c) {
+        LinkedHashSet<String> known = new LinkedHashSet<>();
+        c.getFindings().forEach(f -> known.addAll(f.techniqueIds()));
+        String prompt = "Map this case to ATT&CK techniques.\n\nCase facts (JSON):\n" + caseFacts(c)
+                + "\n\nTechniques already mapped from the detections: " + (known.isEmpty() ? "none" : String.join(", ", known))
+                + ".\nSuggest only ADDITIONAL techniques that the evidence shows and these miss (check the events with the"
+                + " tools first); return an empty list if there are none.";
+        AgentResult r = runLoop(Prompts.ATTACK, prompt, tools, available(EVENT_TOOLS));
+        return parseTechniqueIds(r.text());
+    }
+
+    /** Every distinct technique ID in the text, in order, at most {@value #MAX_SUGGESTED_TECHNIQUES}. */
+    static List<String> parseTechniqueIds(String text) {
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        Matcher m = TECHNIQUE_ID.matcher(text == null ? "" : text);
+        while (m.find() && ids.size() < MAX_SUGGESTED_TECHNIQUES) {
+            ids.add(m.group().toUpperCase(Locale.ROOT));
+        }
+        return List.copyOf(ids);
     }
 
     // F04
@@ -207,7 +245,7 @@ public class SocAgent {
         facts.put("findings", findings);
         List<SecurityEvent> events = c.getEvents();
         facts.put("evidenceEventCount", events.size());
-        facts.put("evidenceSample", events.stream().limit(EVIDENCE_SAMPLE).map(EventToolSupport::summarise).toList());
+        facts.put("evidenceSample", evidenceSample(c).stream().map(EventToolSupport::summarise).toList());
         if (!c.getIocs().isEmpty()) {
             facts.put("iocs", c.getIocs());
         }
@@ -215,6 +253,33 @@ public class SocAgent {
             facts.put("analystNotes", c.getNotes());
         }
         return EventToolSupport.toJson(facts);
+    }
+
+    /**
+     * Up to {@value #EVIDENCE_SAMPLE} events, oldest first, that represent every finding: the
+     * first and last event of each finding are always included, then the gaps are filled with
+     * the earliest remaining events. (Taking only the earliest events would show one brute-force
+     * burst and hide a later finding such as a file change.)
+     */
+    static List<SecurityEvent> evidenceSample(Case c) {
+        LinkedHashMap<String, SecurityEvent> chosen = new LinkedHashMap<>();
+        for (Finding f : c.getFindings()) {
+            List<SecurityEvent> ev = f.events();
+            for (SecurityEvent e : List.of(ev.get(0), ev.get(ev.size() - 1))) {
+                if (chosen.size() < EVIDENCE_SAMPLE) {
+                    chosen.putIfAbsent(e.id(), e);
+                }
+            }
+        }
+        for (SecurityEvent e : c.getEvents()) {
+            if (chosen.size() >= EVIDENCE_SAMPLE) {
+                break;
+            }
+            chosen.putIfAbsent(e.id(), e);
+        }
+        List<SecurityEvent> sample = new ArrayList<>(chosen.values());
+        sample.sort(Comparator.comparing(SecurityEvent::timestamp));
+        return sample;
     }
 
     /** Validates the model's final answer; anything that is not a usable verdict becomes NEEDS_REVIEW. */

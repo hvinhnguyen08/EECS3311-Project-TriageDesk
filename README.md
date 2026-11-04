@@ -53,6 +53,7 @@ Run the CLI with `.\triagedesk.cmd` on Windows (PowerShell needs the `.\`) or `.
 | `note CASE_ID TEXT...` | F09 | `triagedesk note CASE-0001 Disabled the deploy account` |
 | `stats` | F13 | `triagedesk stats` |
 | `enrich CASE_ID` | F07 | `triagedesk enrich CASE-0001` |
+| `map CASE_ID [--ai]` | F08 | `triagedesk map CASE-0001 --ai` |
 | `triage CASE_ID` | F06 | `triagedesk triage CASE-0001` |
 | `summarize FILE_NAME` | F04 | `triagedesk summarize auth.log` |
 | `ask QUESTION...` | F12 | `triagedesk ask Which IPs failed SSH login more than 10 times?` |
@@ -93,6 +94,7 @@ Closing accepts `tp` and `fp` as short forms of `true_positive` and `false_posit
 | `ca.yorku.triagedesk.detect` | `DetectionEngine` (Strategy context) and the `Detector` strategies `WazuhAlertDetector`, `BruteForceDetector`, `SuccessAfterFailureDetector`, `WebScanDetector` |
 | `ca.yorku.triagedesk.casemgmt` | `CaseManager`: groups findings into prioritised cases, applies lifecycle actions and notes, and saves each case to `data/cases/CASE-nnnn.json`; `CaseState` and `NewState`, `InvestigatingState`, `EscalatedState`, `ClosedState` (State pattern) |
 | `ca.yorku.triagedesk.agent` | `SocAgent` (tool-use loop, triage, summary, answers); `Tool` commands `SearchEventsTool`, `CountByTool` in a `ToolRegistry` (Command), `BatchScopedTool` (Decorator); `LlmClient` (Strategy) with `OpenAiClient` (any OpenAI-compatible service: OpenAI, Groq, OpenRouter, Ollama) and `MockLlmClient` (offline, scripted); `ChatMessage`, `ToolCall`, `LlmReply` |
+| `ca.yorku.triagedesk.attack` | `AttackMapper` (MITRE ATT&CK mapping against the bundled catalogue, with AI suggestions) and `MappingResult` |
 | `ca.yorku.triagedesk.intel` | `EnrichmentService` (IOC extraction, lookups, 24 h cache), `IocExtractor`; `ThreatIntelProvider` with the adapters `AbuseIpDbAdapter` and `VirusTotalAdapter` (Adapter) built on `RestIntelAdapter` (Template Method) |
 | `ca.yorku.triagedesk.util` | `Json`: shared Jackson configuration |
 
@@ -126,6 +128,12 @@ The AI commands (`triage`, `summarize`, `ask`) print the agent's answer, every t
 ### Threat-intel enrichment
 
 `enrich CASE_ID` extracts the case's IPv4 addresses, URLs (and their domains) and MD5/SHA-1/SHA-256 hashes, looks each one up with every configured service and stores the result on the case. Free API keys from [AbuseIPDB](https://www.abuseipdb.com/) (IPs) and [VirusTotal](https://www.virustotal.com/) (IPs, domains, URLs, hashes) go in `.env` as `ABUSEIPDB_API_KEY` and `VIRUSTOTAL_API_KEY`; a service without a key is skipped and its indicators are listed with score `n/a`. Private addresses are never sent out, results are cached for 24 hours in `data/intel-cache.json`, and a timeout or rate limit only marks that service's answer as unavailable. The sample data uses reserved documentation addresses, so real services report them as clean.
+
+### MITRE ATT&CK mapping
+
+`map CASE_ID` resolves the technique IDs that Wazuh and the detectors attached to the case's findings in a bundled catalogue. If there are none, or with `--ai`, the agent reviews the case (it may search the events) and suggests further techniques; only IDs found in the catalogue are kept, and the output shows whether each technique came from a detection or from the AI. On the sample SSH case, `--ai` adds T1548.003 (Sudo and Sudo Caching) for the denied sudo that no detector tagged.
+
+The catalogue in `src/main/resources/attack/enterprise-attack-subset.json` is a hand-curated subset of 96 MITRE ATT&CK Enterprise techniques covering Linux, web and authentication activity, not the full matrix. ATT&CK is a registered trademark of The MITRE Corporation; the technique names are used under the [ATT&CK Terms of Use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/).
 
 ### Case lifecycle
 

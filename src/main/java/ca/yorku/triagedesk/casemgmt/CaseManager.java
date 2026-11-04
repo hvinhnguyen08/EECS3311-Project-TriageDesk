@@ -1,5 +1,6 @@
 package ca.yorku.triagedesk.casemgmt;
 
+import ca.yorku.triagedesk.domain.AttackTechnique;
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.Finding;
 import ca.yorku.triagedesk.domain.Ioc;
@@ -182,6 +183,15 @@ public class CaseManager {
     public synchronized Case recordIocs(String caseId, List<Ioc> iocs) {
         Case c = getCase(caseId);
         c.setIocs(iocs);
+        warnings.clear();
+        save(c);
+        return c;
+    }
+
+    /** Stores the case's ATT&CK techniques and saves it. */
+    public synchronized Case recordTechniques(String caseId, List<AttackTechnique> techniques) {
+        Case c = getCase(caseId);
+        c.setTechniques(techniques);
         warnings.clear();
         save(c);
         return c;

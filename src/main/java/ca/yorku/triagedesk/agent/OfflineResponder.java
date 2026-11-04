@@ -19,6 +19,9 @@ public class OfflineResponder implements Function<List<ChatMessage>, LlmReply> {
 
     @Override
     public LlmReply apply(List<ChatMessage> messages) {
+        if (!messages.isEmpty() && Prompts.ATTACK.equals(messages.get(0).content())) {
+            return LlmReply.text("{\"techniques\": []}");  // offline: no suggestions rather than invented ones
+        }
         List<ChatMessage> toolResults = messages.stream().filter(m -> m.role().equals(ChatMessage.TOOL)).toList();
         boolean toolsOffered = messages.stream().noneMatch(m -> m.content() != null
                 && m.content().equals(SocAgent.STEP_LIMIT_PROMPT));

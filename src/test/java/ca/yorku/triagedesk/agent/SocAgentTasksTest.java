@@ -143,6 +143,30 @@ class SocAgentTasksTest {
     }
 
     @Test
+    void evidenceSampleRepresentsEveryFinding() {
+        var findings = new java.util.ArrayList<>(
+                DetectionEngine.withStandardDetectors(AppConfig.load(null, Map.of())).runAll(SampleData.all()));
+        findings.removeIf(f -> !"203.0.113.7".equals(f.srcIp()) && !"web01".equals(f.host()) || "198.51.100.23".equals(f.srcIp()));
+        Case big = new Case("CASE-0009", "SSH", findings, Clock.systemUTC());
+
+        List<String> ids = SocAgent.evidenceSample(big).stream().map(e -> e.id()).toList();
+
+        assertEquals(SocAgent.EVIDENCE_SAMPLE, ids.size());
+        assertTrue(ids.contains("alerts.json:7"), "the 09:21 authorized_keys change is shown: " + ids);
+        assertTrue(ids.contains("auth.log:22"), "the successful login is shown");
+        var times = SocAgent.evidenceSample(big).stream().map(e -> e.timestamp()).toList();
+        assertEquals(times.stream().sorted().toList(), times, "oldest first");
+    }
+
+    @Test
+    void techniqueIdsAreReadFromAnyAnswerFormat() {
+        assertEquals(List.of("T1098.004", "T1548.003"),
+                SocAgent.parseTechniqueIds("{\"techniques\":[{\"id\":\"t1098.004\"},{\"id\":\"T1548.003\"},{\"id\":\"T1098.004\"}]}"));
+        assertEquals(List.of("T1110"), SocAgent.parseTechniqueIds("Probably T1110 (Brute Force); not XT11100."));
+        assertEquals(List.of(), SocAgent.parseTechniqueIds(null));
+    }
+
+    @Test
     void scopedToolHidesAndForcesTheBatch() {
         BatchScopedTool scoped = new BatchScopedTool(tools.get(SearchEventsTool.NAME), "access.log");
 

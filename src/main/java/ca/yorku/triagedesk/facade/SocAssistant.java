@@ -9,6 +9,8 @@ import ca.yorku.triagedesk.agent.SearchEventsTool;
 import ca.yorku.triagedesk.agent.SocAgent;
 import ca.yorku.triagedesk.agent.TokenUsage;
 import ca.yorku.triagedesk.agent.ToolRegistry;
+import ca.yorku.triagedesk.attack.AttackMapper;
+import ca.yorku.triagedesk.attack.MappingResult;
 import ca.yorku.triagedesk.casemgmt.CaseManager;
 import ca.yorku.triagedesk.config.AppConfig;
 import ca.yorku.triagedesk.detect.DetectionEngine;
@@ -51,6 +53,7 @@ public class SocAssistant {
     private final DetectionEngine detectionEngine;
     private final CaseManager caseManager;
     private final EnrichmentService enrichment;
+    private final AttackMapper attackMapper;
     private final Supplier<SocAgent> agentFactory;
     private SocAgent agent;
 
@@ -58,12 +61,14 @@ public class SocAssistant {
      * @param agentFactory creates the agent on first use, so a missing API key only affects the AI features
      */
     public SocAssistant(EventStore eventStore, LogParserFactory parserFactory, DetectionEngine detectionEngine,
-                        CaseManager caseManager, EnrichmentService enrichment, Supplier<SocAgent> agentFactory) {
+                        CaseManager caseManager, EnrichmentService enrichment, AttackMapper attackMapper,
+                        Supplier<SocAgent> agentFactory) {
         this.eventStore = eventStore;
         this.parserFactory = parserFactory;
         this.detectionEngine = detectionEngine;
         this.caseManager = caseManager;
         this.enrichment = enrichment;
+        this.attackMapper = attackMapper;
         this.agentFactory = agentFactory;
     }
 
@@ -99,7 +104,7 @@ public class SocAssistant {
                 .register(new CountByTool(store))
                 .register(new LookupIocTool(enrichment));
         return new SocAssistant(store, new LogParserFactory(config.getLogTimeZone()),
-                DetectionEngine.withStandardDetectors(config), cases, enrichment,
+                DetectionEngine.withStandardDetectors(config), cases, enrichment, AttackMapper.loadBundled(),
                 () -> new SocAgent(llm.get(), tools, config.getLlmMaxSteps()));
     }
 
@@ -195,6 +200,22 @@ public class SocAssistant {
     /** Names of the threat-intel services that have an API key (empty if none). */
     public List<String> threatIntelProviders() {
         return enrichment.providerNames();
+    }
+
+    // F08: MITRE ATT&CK mapping
+
+    /**
+     * Maps the case to ATT&CK techniques and saves them. The detections' technique IDs are
+     * resolved in the bundled catalogue; the agent is asked when there are none, or when
+     * {@code askAgent} is true. Suggested IDs that are not in the catalogue are dropped.
+     *
+     * @throws IllegalStateException "No mapping available" if the case has no IDs and the agent could not answer
+     */
+    public MappingResult mapAttack(String caseId, boolean askAgent) {
+        Case c = caseManager.getCase(caseId);
+        MappingResult r = attackMapper.map(c, askAgent, cs -> agent().suggestTechniques(cs));
+        caseManager.recordTechniques(c.getId(), r.techniques());
+        return r;
     }
 
     // F06: AI case triage

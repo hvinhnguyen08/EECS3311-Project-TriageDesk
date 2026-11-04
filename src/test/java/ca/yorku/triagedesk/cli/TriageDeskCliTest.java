@@ -137,6 +137,21 @@ class TriageDeskCliTest {
     }
 
     @Test
+    void mapFromTheCommandLine() {
+        run("import", "samples/alerts.json", "samples/access.log");
+        run("detect");
+
+        Run map = run("map", "CASE-0002");
+        assertEquals(0, map.exitCode(), map.err());
+        assertTrue(map.out().contains("T1595.002  detection Vulnerability Scanning"), map.out());
+        assertTrue(map.out().matches("(?s).*T1190 +detection Exploit Public-Facing Application +Initial Access.*"), map.out());
+
+        Run offline = run("map", "CASE-0002", "--ai");
+        assertEquals(0, offline.exitCode(), offline.err());
+        assertTrue(run("show", "CASE-0002").out().contains("ATT&CK techniques:"));
+    }
+
+    @Test
     void statsWithAndWithoutData() {
         assertTrue(run("stats").out().contains("No data. Import a file to begin."));
 
