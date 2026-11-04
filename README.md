@@ -56,6 +56,9 @@ Run the CLI with `.\triagedesk.cmd` on Windows (PowerShell needs the `.\`) or `.
 | `map CASE_ID [--ai]` | F08 | `triagedesk map CASE-0001 --ai` |
 | `triage CASE_ID` | F06 | `triagedesk triage CASE-0001` |
 | `summarize FILE_NAME` | F04 | `triagedesk summarize auth.log` |
+| `respond CASE_ID` | F10 | `triagedesk respond CASE-0001` |
+| `done CASE_ID STEP` | F10 | `triagedesk done CASE-0001 1` |
+| `report CASE_ID [-o FILE]` | F11 | `triagedesk report CASE-0001` (writes `reports/CASE-0001.md`) |
 | `ask QUESTION...` | F12 | `triagedesk ask Which IPs failed SSH login more than 10 times?` |
 
 `triagedesk --help` and `triagedesk COMMAND --help` describe every option. Errors are printed as one `Error: ...` line and the command exits with code 1.
@@ -96,6 +99,7 @@ Closing accepts `tp` and `fp` as short forms of `true_positive` and `false_posit
 | `ca.yorku.triagedesk.agent` | `SocAgent` (tool-use loop, triage, summary, answers); `Tool` commands `SearchEventsTool`, `CountByTool` in a `ToolRegistry` (Command), `BatchScopedTool` (Decorator); `LlmClient` (Strategy) with `OpenAiClient` (any OpenAI-compatible service: OpenAI, Groq, OpenRouter, Ollama) and `MockLlmClient` (offline, scripted); `ChatMessage`, `ToolCall`, `LlmReply` |
 | `ca.yorku.triagedesk.attack` | `AttackMapper` (MITRE ATT&CK mapping against the bundled catalogue, with AI suggestions) and `MappingResult` |
 | `ca.yorku.triagedesk.intel` | `EnrichmentService` (IOC extraction, lookups, 24 h cache), `IocExtractor`; `ThreatIntelProvider` with the adapters `AbuseIpDbAdapter` and `VirusTotalAdapter` (Adapter) built on `RestIntelAdapter` (Template Method) |
+| `ca.yorku.triagedesk.report` | `ReportGenerator`: Markdown incident report with timeline |
 | `ca.yorku.triagedesk.util` | `Json`: shared Jackson configuration |
 
 ### Detection rules
@@ -134,6 +138,10 @@ The AI commands (`triage`, `summarize`, `ask`) print the agent's answer, every t
 `map CASE_ID` resolves the technique IDs that Wazuh and the detectors attached to the case's findings in a bundled catalogue. If there are none, or with `--ai`, the agent reviews the case (it may search the events) and suggests further techniques; only IDs found in the catalogue are kept, and the output shows whether each technique came from a detection or from the AI. On the sample SSH case, `--ai` adds T1548.003 (Sudo and Sudo Caching) for the denied sudo that no detector tagged.
 
 The catalogue in `src/main/resources/attack/enterprise-attack-subset.json` is a hand-curated subset of 96 MITRE ATT&CK Enterprise techniques covering Linux, web and authentication activity, not the full matrix. ATT&CK is a registered trademark of The MITRE Corporation; the technique names are used under the [ATT&CK Terms of Use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/).
+
+### Response plan and incident report
+
+`respond CASE_ID` needs a triage verdict. For a true positive (or NEEDS_REVIEW) the agent recommends 3 to 8 ordered steps that name the IPs, accounts and hosts involved, each with its reason; a false-positive or benign case gets a single "document and close" step without calling the AI. `done CASE_ID N` ticks a step off. `report CASE_ID` writes a Markdown report: the case details, findings, timeline, IOCs, techniques, verdict, plan, notes and history come straight from the case data, and only the executive summary and analysis are written by the agent and labelled AI-generated. If the AI is unavailable the report is still written, with "[AI narrative unavailable]".
 
 ### Case lifecycle
 

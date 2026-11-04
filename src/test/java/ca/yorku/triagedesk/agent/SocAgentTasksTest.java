@@ -2,6 +2,7 @@ package ca.yorku.triagedesk.agent;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ca.yorku.triagedesk.config.AppConfig;
@@ -156,6 +157,21 @@ class SocAgentTasksTest {
         assertTrue(ids.contains("auth.log:22"), "the successful login is shown");
         var times = SocAgent.evidenceSample(big).stream().map(e -> e.timestamp()).toList();
         assertEquals(times.stream().sorted().toList(), times, "oldest first");
+    }
+
+    @Test
+    void responseStepsFromJsonOrALIst() {
+        assertEquals(List.of("Block 203.0.113.7 - brute force source", "Reset the deploy password"),
+                SocAgent.parseSteps("```json\n{\"steps\":[{\"action\":\"Block 203.0.113.7\",\"reason\":\"brute force source\"},"
+                        + "{\"action\":\"Reset the deploy password\"},{\"action\":\" \"}]}\n```"));
+        assertEquals(List.of("Block the IP", "Reset the password"),
+                SocAgent.parseSteps("Here is the plan:\n1. Block the IP\n- Reset the password\nThanks"));
+        assertEquals(List.of(), SocAgent.parseSteps("I cannot help with that."));
+        assertEquals(SocAgent.MAX_RESPONSE_STEPS, SocAgent.parseSteps("- a\n".repeat(15)).size());
+
+        SocAgent agent = new SocAgent(new MockLlmClient(LlmReply.text("No idea.")), tools, 6);
+        assertTrue(assertThrows(IllegalStateException.class, () -> agent.recommendResponse(sshCase))
+                .getMessage().startsWith("The AI did not return any usable response steps"));
     }
 
     @Test

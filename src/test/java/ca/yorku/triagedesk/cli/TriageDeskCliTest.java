@@ -152,6 +152,26 @@ class TriageDeskCliTest {
     }
 
     @Test
+    void respondDoneAndReportOffline() throws Exception {
+        run("import", "samples/auth.log");
+        run("detect");
+        assertTrue(run("respond", "CASE-0001").err().contains("Run AI Triage first"));
+
+        run("triage", "CASE-0001");
+        Run respond = run("respond", "CASE-0001");
+        assertEquals(0, respond.exitCode(), respond.err());
+        assertTrue(respond.out().contains("1. [ ] Offline mode"), respond.out());
+        assertTrue(run("done", "CASE-0001", "1").out().contains("1. [x] Offline mode"));
+        assertEquals(1, run("done", "CASE-0001", "5").exitCode());
+
+        Path file = dataDir.resolve("out/report.md");
+        Run report = run("report", "CASE-0001", "-o", file.toString());
+        assertEquals(0, report.exitCode(), report.err());
+        assertTrue(report.out().contains("Report written to"));
+        assertTrue(java.nio.file.Files.readString(file).contains("# Incident report: CASE-0001"));
+    }
+
+    @Test
     void statsWithAndWithoutData() {
         assertTrue(run("stats").out().contains("No data. Import a file to begin."));
 

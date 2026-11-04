@@ -19,8 +19,19 @@ public class OfflineResponder implements Function<List<ChatMessage>, LlmReply> {
 
     @Override
     public LlmReply apply(List<ChatMessage> messages) {
-        if (!messages.isEmpty() && Prompts.ATTACK.equals(messages.get(0).content())) {
+        String system = messages.isEmpty() ? "" : messages.get(0).content();
+        if (Prompts.ATTACK.equals(system)) {
             return LlmReply.text("{\"techniques\": []}");  // offline: no suggestions rather than invented ones
+        }
+        if (Prompts.RESPONSE.equals(system)) {
+            ObjectNode plan = Json.mapper().createObjectNode();
+            plan.putArray("steps").addObject().put("action", "Offline mode: no AI model is configured"
+                    + " (LLM_PROVIDER=mock), so no response steps were generated. Write the plan manually or configure"
+                    + " an AI service.");
+            return LlmReply.text(plan.toString());
+        }
+        if (Prompts.NARRATIVE.equals(system)) {
+            return LlmReply.text("Offline mode: no AI model is configured (LLM_PROVIDER=mock), so no narrative was written.");
         }
         List<ChatMessage> toolResults = messages.stream().filter(m -> m.role().equals(ChatMessage.TOOL)).toList();
         boolean toolsOffered = messages.stream().noneMatch(m -> m.content() != null

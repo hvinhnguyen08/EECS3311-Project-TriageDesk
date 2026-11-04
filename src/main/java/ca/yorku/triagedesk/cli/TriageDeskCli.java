@@ -9,9 +9,11 @@ import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.DashboardStats;
 import ca.yorku.triagedesk.domain.Finding;
 import ca.yorku.triagedesk.domain.Ioc;
+import ca.yorku.triagedesk.domain.ResponsePlan;
 import ca.yorku.triagedesk.domain.TriageVerdict;
 import ca.yorku.triagedesk.facade.DetectionResult;
 import ca.yorku.triagedesk.facade.ImportResult;
+import ca.yorku.triagedesk.facade.ReportResult;
 import ca.yorku.triagedesk.facade.SocAssistant;
 import java.io.PrintWriter;
 import java.nio.file.Path;
@@ -155,6 +157,10 @@ public class TriageDeskCli implements Runnable {
         }
         out.println("AI verdict: " + (c.getVerdict() == null ? "not triaged yet"
                 : String.format(Locale.ROOT, "%s (confidence %.2f)", c.getVerdict().verdict(), c.getVerdict().confidence())));
+        if (c.getResponsePlan() != null) {
+            out.println("Response plan:");
+            printPlan(out, c.getResponsePlan());
+        }
         out.println("Allowed actions: " + String.join(", ", c.getState().allowedActions()));
         printList(out, "Notes", c.getNotes());
         printList(out, "History", c.getHistory());
@@ -221,6 +227,42 @@ public class TriageDeskCli implements Runnable {
             out.println("Not in the ATT&CK catalogue, ignored: " + String.join(", ", r.rejected()));
         }
         printUsage(out);
+        return 0;
+    }
+
+    // F10
+
+    @Command(name = "respond", description = "Let the AI agent recommend response steps for a triaged case.")
+    int respond(@Parameters(paramLabel = "CASE_ID") String caseId) {
+        String id = caseId.strip().toUpperCase(Locale.ROOT);
+        ResponsePlan plan = assistant().recommendResponse(caseId);
+        out().printf("Response plan for %s:%n", id);
+        printPlan(out(), plan);
+        out().println("Tick off a step with: triagedesk done " + id + " STEP_NUMBER");
+        printUsage(out());
+        return 0;
+    }
+
+    @Command(name = "done", description = "Mark a response step as done.")
+    int done(@Parameters(index = "0", paramLabel = "CASE_ID") String caseId,
+             @Parameters(index = "1", paramLabel = "STEP_NUMBER") int step) {
+        Case c = assistant().markStepDone(caseId, step);
+        printPlan(out(), c.getResponsePlan());
+        return 0;
+    }
+
+    // F11
+
+    @Command(name = "report", description = "Write a Markdown incident report for a case.")
+    int report(@Parameters(paramLabel = "CASE_ID") String caseId,
+               @Option(names = {"-o", "--output"}, paramLabel = "FILE",
+                       description = "Report file (default: reports/CASE_ID.md).") Path output) {
+        ReportResult r = assistant().generateReport(caseId, output);
+        if (r.warning() != null) {
+            err().println("Warning: " + r.warning() + " (the report was written without it)");
+        }
+        out().println("Report written to " + r.path().toAbsolutePath().normalize());
+        printUsage(out());
         return 0;
     }
 
@@ -292,6 +334,12 @@ public class TriageDeskCli implements Runnable {
                     ? c.getTitle().substring(0, TITLE_WIDTH - 3) + "..." : c.getTitle();
             out.printf("%-10s %-13s %-8s %3d %4d  %s%n", c.getId(), c.getState().name(), c.getSeverity(),
                     c.getPriority(), c.getFindings().size(), title);
+        }
+    }
+
+    private static void printPlan(PrintWriter out, ResponsePlan plan) {
+        for (int i = 0; i < plan.getSteps().size(); i++) {
+            out.printf("  %d. [%s] %s%n", i + 1, plan.isDone(i) ? "x" : " ", plan.getSteps().get(i));
         }
     }
 

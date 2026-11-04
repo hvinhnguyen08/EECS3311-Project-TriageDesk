@@ -3,6 +3,7 @@ package ca.yorku.triagedesk.agent;
 import ca.yorku.triagedesk.domain.AgentResult;
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.Finding;
+import ca.yorku.triagedesk.domain.ResponsePlan;
 import ca.yorku.triagedesk.domain.SecurityEvent;
 import ca.yorku.triagedesk.domain.TriageVerdict;
 import ca.yorku.triagedesk.domain.Verdict;
@@ -36,6 +37,8 @@ public class SocAgent {
     static final int EVIDENCE_SAMPLE = 12;
 
     static final int MAX_SUGGESTED_TECHNIQUES = 8;
+    static final int MAX_RESPONSE_STEPS = 10;
+    private static final Pattern LIST_ITEM = Pattern.compile("^\\s*(?:[-*\\u2022]|\\d+[.)])\\s+(.+)$");
     private static final Pattern TECHNIQUE_ID =
             Pattern.compile("(?i)\\bT\\d{4}(?:\\.\\d{3})?\\b");
 
@@ -103,6 +106,70 @@ public class SocAgent {
             ids.add(m.group().toUpperCase(Locale.ROOT));
         }
         return List.copyOf(ids);
+    }
+
+    // F10
+
+    /**
+     * Asks the model for an ordered response checklist for a triaged case. The steps are
+     * advice; the analyst ticks them off.
+     *
+     * @throws IllegalStateException if the model's answer contains no usable steps
+     * @throws LlmException          if the model cannot be reached
+     */
+    public ResponsePlan recommendResponse(Case c) {
+        String prompt = "Recommend response steps for this case.\n\nCase facts (JSON):\n" + caseFacts(c);
+        AgentResult r = runLoop(Prompts.RESPONSE, prompt, tools, List.of());
+        List<String> steps = parseSteps(r.text());
+        if (steps.isEmpty()) {
+            throw new IllegalStateException("The AI did not return any usable response steps: " + r.text());
+        }
+        return new ResponsePlan(steps);
+    }
+
+    /**
+     * Reads the steps from the model's JSON answer ({"steps":[{"action","reason"}]}); if the
+     * answer is not JSON, numbered or bulleted lines are accepted instead.
+     */
+    static List<String> parseSteps(String text) {
+        List<String> steps = new ArrayList<>();
+        String t = text == null ? "" : text.strip();
+        int start = t.indexOf('{');
+        int end = t.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            try {
+                for (JsonNode s : Json.mapper().readTree(t.substring(start, end + 1)).path("steps")) {
+                    String action = s.isTextual() ? s.asText() : s.path("action").asText("");
+                    String reason = s.path("reason").asText("");
+                    if (!action.isBlank()) {
+                        steps.add(reason.isBlank() ? action.strip() : action.strip() + " - " + reason.strip());
+                    }
+                }
+            } catch (JsonProcessingException e) {
+                steps.clear();
+            }
+        }
+        if (steps.isEmpty()) {
+            for (String line : t.split("\\R")) {
+                Matcher m = LIST_ITEM.matcher(line);
+                if (m.matches() && !m.group(1).isBlank()) {
+                    steps.add(m.group(1).strip());
+                }
+            }
+        }
+        return steps.size() > MAX_RESPONSE_STEPS ? List.copyOf(steps.subList(0, MAX_RESPONSE_STEPS)) : steps;
+    }
+
+    // F11
+
+    /**
+     * Writes the AI part of the incident report (executive summary and analysis, Markdown).
+     *
+     * @throws LlmException if the model cannot be reached
+     */
+    public String writeNarrative(Case c) {
+        String prompt = "Write the executive summary and analysis for this case.\n\nCase facts (JSON):\n" + caseFacts(c);
+        return runLoop(Prompts.NARRATIVE, prompt, tools, List.of()).text().strip();
     }
 
     // F04
@@ -248,6 +315,26 @@ public class SocAgent {
         facts.put("evidenceSample", evidenceSample(c).stream().map(EventToolSupport::summarise).toList());
         if (!c.getIocs().isEmpty()) {
             facts.put("iocs", c.getIocs());
+        }
+        if (!c.getTechniques().isEmpty()) {
+            facts.put("attackTechniques", c.getTechniques().stream().map(t -> t.id() + " " + t.name()).toList());
+        }
+        if (c.getVerdict() != null) {
+            Map<String, Object> v = new LinkedHashMap<>();
+            v.put("verdict", c.getVerdict().verdict().name());
+            v.put("confidence", c.getVerdict().confidence());
+            v.put("reasoning", c.getVerdict().reasoning());
+            facts.put("triageVerdict", v);
+        }
+        if (c.getResponsePlan() != null) {
+            List<String> plan = new ArrayList<>();
+            for (int i = 0; i < c.getResponsePlan().getSteps().size(); i++) {
+                plan.add((c.getResponsePlan().isDone(i) ? "[done] " : "[open] ") + c.getResponsePlan().getSteps().get(i));
+            }
+            facts.put("responsePlan", plan);
+        }
+        if (c.getResolution() != null) {
+            facts.put("closedAs", c.getResolution().name());
         }
         if (!c.getNotes().isEmpty()) {
             facts.put("analystNotes", c.getNotes());

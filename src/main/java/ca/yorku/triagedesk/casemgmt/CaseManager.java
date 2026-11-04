@@ -4,6 +4,7 @@ import ca.yorku.triagedesk.domain.AttackTechnique;
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.Finding;
 import ca.yorku.triagedesk.domain.Ioc;
+import ca.yorku.triagedesk.domain.ResponsePlan;
 import ca.yorku.triagedesk.domain.SecurityEvent;
 import ca.yorku.triagedesk.domain.TriageVerdict;
 import ca.yorku.triagedesk.util.Json;
@@ -192,6 +193,32 @@ public class CaseManager {
     public synchronized Case recordTechniques(String caseId, List<AttackTechnique> techniques) {
         Case c = getCase(caseId);
         c.setTechniques(techniques);
+        warnings.clear();
+        save(c);
+        return c;
+    }
+
+    /** Stores a new response plan (replacing any earlier one) and saves the case. */
+    public synchronized Case recordResponsePlan(String caseId, ResponsePlan plan) {
+        Case c = getCase(caseId);
+        c.setResponsePlan(plan);
+        warnings.clear();
+        save(c);
+        return c;
+    }
+
+    /**
+     * Ticks off one step of the response plan and saves the case.
+     *
+     * @param stepNumber 1-based, as shown to the analyst
+     */
+    public synchronized Case markStepDone(String caseId, int stepNumber) {
+        Case c = getCase(caseId);
+        if (c.getResponsePlan() == null) {
+            throw new IllegalStateException(c.getId() + " has no response plan yet; generate one first");
+        }
+        c.getResponsePlan().markDone(stepNumber - 1);
+        c.recordHistory("Response step " + stepNumber + " done");
         warnings.clear();
         save(c);
         return c;

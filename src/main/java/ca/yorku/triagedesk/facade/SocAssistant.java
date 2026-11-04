@@ -20,9 +20,12 @@ import ca.yorku.triagedesk.domain.DashboardStats;
 import ca.yorku.triagedesk.domain.Finding;
 import ca.yorku.triagedesk.domain.Ioc;
 import ca.yorku.triagedesk.domain.SecurityEvent;
+import ca.yorku.triagedesk.domain.ResponsePlan;
 import ca.yorku.triagedesk.domain.TriageVerdict;
+import ca.yorku.triagedesk.domain.Verdict;
 import ca.yorku.triagedesk.ingest.EventStore;
 import ca.yorku.triagedesk.intel.EnrichmentService;
+import ca.yorku.triagedesk.report.ReportGenerator;
 import ca.yorku.triagedesk.ingest.LogParser;
 import ca.yorku.triagedesk.ingest.LogParserFactory;
 import ca.yorku.triagedesk.ingest.UnsupportedFormatException;
@@ -35,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -54,6 +58,7 @@ public class SocAssistant {
     private final CaseManager caseManager;
     private final EnrichmentService enrichment;
     private final AttackMapper attackMapper;
+    private final ReportGenerator reportGenerator = new ReportGenerator();
     private final Supplier<SocAgent> agentFactory;
     private SocAgent agent;
 
@@ -216,6 +221,57 @@ public class SocAssistant {
         MappingResult r = attackMapper.map(c, askAgent, cs -> agent().suggestTechniques(cs));
         caseManager.recordTechniques(c.getId(), r.techniques());
         return r;
+    }
+
+    // F10: AI response recommendations
+
+    /**
+     * Recommends response steps for a triaged case and saves them as its checklist. A case
+     * triaged as FALSE_POSITIVE or BENIGN gets a single "document and close" step without
+     * calling the AI.
+     *
+     * @throws IllegalStateException "Run AI Triage first" if the case has no verdict
+     */
+    public ResponsePlan recommendResponse(String caseId) {
+        Case c = caseManager.getCase(caseId);
+        if (c.getVerdict() == null) {
+            throw new IllegalStateException("Run AI Triage first: " + c.getId() + " has no verdict yet");
+        }
+        Verdict v = c.getVerdict().verdict();
+        ResponsePlan plan = v == Verdict.FALSE_POSITIVE || v == Verdict.BENIGN
+                ? new ResponsePlan(List.of("Document why the activity is " + (v == Verdict.BENIGN ? "benign" : "a false positive")
+                        + " in a note, then close the case as " + v.name().toLowerCase(Locale.ROOT)))
+                : agent().recommendResponse(c);
+        caseManager.recordResponsePlan(c.getId(), plan);
+        return plan;
+    }
+
+    /** Ticks off a response step (1-based). */
+    public Case markStepDone(String caseId, int stepNumber) {
+        return caseManager.markStepDone(caseId, stepNumber);
+    }
+
+    // F11: incident report
+
+    /**
+     * Writes the Markdown incident report. The AI writes the executive summary and analysis;
+     * if it is unavailable the report is still written with a placeholder.
+     *
+     * @param out the report file, or null for reports/CASE-nnnn.md
+     * @throws java.io.UncheckedIOException "Could not write report" if the file cannot be written
+     */
+    public ReportResult generateReport(String caseId, Path out) {
+        Case c = caseManager.getCase(caseId);
+        String narrative = null;
+        String warning = null;
+        try {
+            narrative = agent().writeNarrative(c);
+        } catch (LlmException | IllegalStateException e) {
+            warning = "AI narrative unavailable: " + e.getMessage();
+        }
+        Path target = out != null ? out : Path.of("reports", c.getId() + ".md");
+        Path written = reportGenerator.generate(c, narrative, target);
+        return new ReportResult(written, narrative != null, warning);
     }
 
     // F06: AI case triage
