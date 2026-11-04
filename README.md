@@ -46,7 +46,7 @@ mvn package
 .	riagedesk-gui.cmd        (Windows; ./triagedesk-gui on macOS/Linux)
 ```
 
-or, from the sources, `mvn javafx:run`. The GUI uses the same `.env` and data folder as the CLI, so cases created in one appear in the other. The **Cases and imports** tab imports files (several at once), runs the detections, lists the cases by priority (coloured by severity; double-click to open one) and shows the AI summary of a selected file with the agent's tool calls. AI and network work runs in the background with a progress indicator, so the window stays responsive.
+or, from the sources, `mvn javafx:run`. The GUI uses the same `.env` and data folder as the CLI, so cases created in one appear in the other. The **Cases and imports** tab imports files (several at once), runs the detections, lists the cases by priority (coloured by severity; double-click to open one) and shows the AI summary of a selected file with the agent's tool calls. AI and network work runs in the background with a progress indicator, so the window stays responsive. Double-clicking a case opens its tab: findings and the evidence timeline on the left; on the right the AI triage verdict with its reasoning and tool calls and the response checklist (tick steps off), the IOC and ATT&CK tables with **Enrich IOCs** and **Map to ATT&CK** (optionally asking the AI), and notes and history. The status buttons (Start, Escalate, Close, Reopen) are enabled only when the case's state allows them; Escalate asks for a reason and Close for a resolution and comment. **Generate report** writes `reports/CASE-nnnn.md` and links to it.
 
 ### Command-line interface
 
@@ -98,7 +98,7 @@ Closing accepts `tp` and `fp` as short forms of `true_positive` and `false_posit
 
 | Package | Contents |
 |---|---|
-| `ca.yorku.triagedesk.gui` | JavaFX GUI (MVC): `TriageDeskApp`, `MainView`/`MainViewFx` and `MainController`, `UiTasks` for background work |
+| `ca.yorku.triagedesk.gui` | JavaFX GUI (MVC): `TriageDeskApp`, `MainView`/`MainViewFx`/`MainController`, `CaseView`/`CaseViewFx`/`CaseController`, `UiTasks` for background work |
 | `ca.yorku.triagedesk.cli` | `TriageDeskCli`: picocli command-line interface |
 | `ca.yorku.triagedesk.facade` | `SocAssistant` (Facade): one method per feature, used by the CLI and the GUI |
 | `ca.yorku.triagedesk.config` | `AppConfig`: loads `.env` and environment variables |

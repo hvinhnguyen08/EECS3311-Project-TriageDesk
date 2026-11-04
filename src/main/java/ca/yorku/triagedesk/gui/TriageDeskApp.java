@@ -1,9 +1,8 @@
 package ca.yorku.triagedesk.gui;
 
 import ca.yorku.triagedesk.config.AppConfig;
-import ca.yorku.triagedesk.domain.Case;
-import ca.yorku.triagedesk.domain.Finding;
 import ca.yorku.triagedesk.facade.SocAssistant;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import javafx.application.Application;
@@ -12,7 +11,6 @@ import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
-import javafx.scene.control.TextArea;
 import javafx.stage.Stage;
 
 /**
@@ -80,28 +78,14 @@ public class TriageDeskApp extends Application {
             tabs.getSelectionModel().select(existing);
             return;
         }
-        Case c = assistant.getCase(caseId);
-        TextArea details = new TextArea(describe(c));
-        details.setEditable(false);
-        details.getStyleClass().add("case-text");
-        Tab tab = new Tab(c.getId(), details);
+        CaseViewFx view = new CaseViewFx(path -> getHostServices().showDocument(path.toAbsolutePath().toUri().toString()));
+        CaseController controller = new CaseController(assistant, view, tasks, caseId, Path.of("reports"),
+                mainController::refresh);
+        Tab tab = new Tab(caseId, view.getRoot());
         tab.setOnClosed(e -> caseTabs.remove(caseId));
         caseTabs.put(caseId, tab);
         tabs.getTabs().add(tab);
         tabs.getSelectionModel().select(tab);
-    }
-
-    private static String describe(Case c) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(c.getId()).append("  [").append(c.getState().name()).append("]  ").append(c.getSeverity())
-                .append("  priority ").append(c.getPriority()).append('\n').append(c.getTitle()).append("\n\nFindings:\n");
-        for (Finding f : c.getFindings()) {
-            sb.append("  - [").append(f.detector()).append("] ").append(f.severity()).append(' ').append(f.title())
-                    .append(" (").append(f.events().size()).append(" events, ").append(f.firstSeen()).append(" .. ")
-                    .append(f.lastSeen()).append(")\n");
-        }
-        sb.append("\nHistory:\n");
-        c.getHistory().forEach(h -> sb.append("  ").append(h).append('\n'));
-        return sb.toString();
+        controller.load();
     }
 }
