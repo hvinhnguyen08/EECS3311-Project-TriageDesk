@@ -98,6 +98,11 @@ public class OpenAiClient implements LlmClient {
             throw new LlmException("AI service rejected the API key (HTTP " + status + "). Check LLM_API_KEY in .env.");
         }
         if (status == 429) {
+            if (isQuotaError(response.body())) {
+                throw new LlmException("AI service account has no credits or quota left (HTTP 429)."
+                        + " Add credits with your provider or switch LLM_BASE_URL/LLM_API_KEY to another service."
+                        + errorDetail(response.body()));
+            }
             throw new LlmException("AI service rate limit reached (HTTP 429). Wait a moment and try again."
                     + errorDetail(response.body()));
         }
@@ -182,6 +187,18 @@ public class OpenAiClient implements LlmClient {
         }
         JsonNode usage = root.path("usage");
         return new LlmReply(text, calls, usage.path("prompt_tokens").asInt(0), usage.path("completion_tokens").asInt(0));
+    }
+
+    /** OpenAI uses HTTP 429 both for rate limits and for an account without credits ("insufficient_quota"). */
+    private boolean isQuotaError(String body) {
+        try {
+            JsonNode error = mapper.readTree(body).path("error");
+            String code = error.path("code").asText("") + " " + error.path("type").asText("");
+            String msg = error.path("message").asText("").toLowerCase(java.util.Locale.ROOT);
+            return code.contains("insufficient_quota") || msg.contains("credits") || msg.contains("exceeded your current quota");
+        } catch (JsonProcessingException | RuntimeException e) {
+            return false;
+        }
     }
 
     private String errorDetail(String body) {

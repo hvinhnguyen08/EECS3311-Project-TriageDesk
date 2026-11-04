@@ -1,9 +1,12 @@
 package ca.yorku.triagedesk.cli;
 
+import ca.yorku.triagedesk.agent.TokenUsage;
 import ca.yorku.triagedesk.config.AppConfig;
+import ca.yorku.triagedesk.domain.AgentResult;
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.DashboardStats;
 import ca.yorku.triagedesk.domain.Finding;
+import ca.yorku.triagedesk.domain.TriageVerdict;
 import ca.yorku.triagedesk.facade.DetectionResult;
 import ca.yorku.triagedesk.facade.ImportResult;
 import ca.yorku.triagedesk.facade.SocAssistant;
@@ -169,6 +172,40 @@ public class TriageDeskCli implements Runnable {
         return 0;
     }
 
+    // F06
+
+    @Command(name = "triage", description = "Let the AI agent investigate a case and propose a verdict.")
+    int triage(@Parameters(paramLabel = "CASE_ID") String caseId) {
+        out().println("Investigating " + caseId.strip().toUpperCase(Locale.ROOT) + " with " + assistant().describeModel() + " ...");
+        TriageVerdict v = assistant().triageCase(caseId);
+        Case c = assistant().getCase(caseId);
+        PrintWriter out = out();
+        out.printf(Locale.ROOT, "%nVerdict:    %s (confidence %.2f)%n", v.verdict(), v.confidence());
+        out.println("Reasoning:  " + v.reasoning());
+        printTrace(out, v.toolTrace());
+        out.printf("%nCase %s is now %s.%n", c.getId(), c.getState().name());
+        printUsage(out);
+        return 0;
+    }
+
+    // F04
+
+    @Command(name = "summarize", description = "Let the AI agent summarise one imported file (see 'stats' for file names).")
+    int summarize(@Parameters(paramLabel = "FILE_NAME", description = "Imported file name, for example auth.log") String batchId) {
+        out().println("Summarising " + batchId + " with " + assistant().describeModel() + " ...");
+        printAgentResult(assistant().summarizeLog(batchId));
+        return 0;
+    }
+
+    // F12
+
+    @Command(name = "ask", description = "Ask the AI agent a question about the imported data.")
+    int ask(@Parameters(paramLabel = "QUESTION", arity = "1..*") List<String> words) {
+        out().println("Asking " + assistant().describeModel() + " ...");
+        printAgentResult(assistant().ask(String.join(" ", words)));
+        return 0;
+    }
+
     // F13
 
     @Command(name = "stats", description = "Show totals for the imported events and the case queue.")
@@ -203,6 +240,31 @@ public class TriageDeskCli implements Runnable {
                     ? c.getTitle().substring(0, TITLE_WIDTH - 3) + "..." : c.getTitle();
             out.printf("%-10s %-13s %-8s %3d %4d  %s%n", c.getId(), c.getState().name(), c.getSeverity(),
                     c.getPriority(), c.getFindings().size(), title);
+        }
+    }
+
+    private void printAgentResult(AgentResult r) {
+        PrintWriter out = out();
+        out.println();
+        out.println(r.text());
+        if (r.stoppedEarly()) {
+            out.println("[Incomplete: the step limit was reached before the agent finished.]");
+        }
+        printTrace(out, r.toolTrace());
+        printUsage(out);
+    }
+
+    private static void printTrace(PrintWriter out, List<String> trace) {
+        out.printf("%nTool calls (%d):%n", trace.size());
+        for (int i = 0; i < trace.size(); i++) {
+            out.printf("  %d. %s%n", i + 1, trace.get(i));
+        }
+    }
+
+    private void printUsage(PrintWriter out) {
+        TokenUsage u = assistant().getLastUsage();
+        if (u.modelCalls() > 0) {
+            out.printf("Model calls: %d, tokens: %d in, %d out%n", u.modelCalls(), u.promptTokens(), u.completionTokens());
         }
     }
 

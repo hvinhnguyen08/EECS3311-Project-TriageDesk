@@ -142,6 +142,10 @@ class OpenAiClientTest {
         LlmException rate = assertThrows(LlmException.class, () -> client().chat(List.of(ChatMessage.user("?")), List.of()));
         assertTrue(rate.getMessage().contains("rate limit") && rate.getMessage().contains("Rate limit reached for model"));
 
+        response = "{\"error\":{\"message\":\"You have no credits remaining.\",\"type\":\"insufficient_quota\"}}";
+        LlmException quota = assertThrows(LlmException.class, () -> client().chat(List.of(ChatMessage.user("?")), List.of()));
+        assertTrue(quota.getMessage().startsWith("AI service account has no credits or quota left"), quota.getMessage());
+
         status = 500;
         response = "oops";
         LlmException server500 = assertThrows(LlmException.class, () -> client().chat(List.of(ChatMessage.user("?")), List.of()));

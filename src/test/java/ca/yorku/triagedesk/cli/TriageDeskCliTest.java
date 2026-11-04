@@ -98,6 +98,31 @@ class TriageDeskCliTest {
     }
 
     @Test
+    void aiCommandsRunOfflineWithTheMockProvider() {
+        run("import", "samples/auth.log");
+        run("detect");
+
+        Run triage = run("triage", "case-0001");
+        assertEquals(0, triage.exitCode(), triage.err());
+        assertTrue(triage.out().contains("Investigating CASE-0001 with mock (offline, scripted replies)"));
+        assertTrue(triage.out().contains("Verdict:    NEEDS_REVIEW (confidence 0.00)"), triage.out());
+        assertTrue(triage.out().contains("Tool calls (1):"));
+        assertTrue(triage.out().contains("Case CASE-0001 is now INVESTIGATING."));
+        assertTrue(run("show", "CASE-0001").out().contains("AI verdict: NEEDS_REVIEW"));
+
+        Run summary = run("summarize", "auth.log");
+        assertEquals(0, summary.exitCode(), summary.err());
+        assertTrue(summary.out().contains("Offline mode"));
+
+        Run ask = run("ask", "Which", "IP", "failed", "most?");
+        assertEquals(0, ask.exitCode(), ask.err());
+        assertTrue(ask.out().contains("203.0.113.7"));
+
+        Run unknownFile = run("summarize", "nope.log");
+        assertEquals("Error: No imported file named 'nope.log'. Imported files: auth.log", unknownFile.err().strip());
+    }
+
+    @Test
     void statsWithAndWithoutData() {
         assertTrue(run("stats").out().contains("No data. Import a file to begin."));
 

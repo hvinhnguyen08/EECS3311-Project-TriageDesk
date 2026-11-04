@@ -1,12 +1,22 @@
 package ca.yorku.triagedesk.facade;
 
+import ca.yorku.triagedesk.agent.CountByTool;
+import ca.yorku.triagedesk.agent.LlmClient;
+import ca.yorku.triagedesk.agent.LlmClients;
+import ca.yorku.triagedesk.agent.LlmException;
+import ca.yorku.triagedesk.agent.SearchEventsTool;
+import ca.yorku.triagedesk.agent.SocAgent;
+import ca.yorku.triagedesk.agent.TokenUsage;
+import ca.yorku.triagedesk.agent.ToolRegistry;
 import ca.yorku.triagedesk.casemgmt.CaseManager;
 import ca.yorku.triagedesk.config.AppConfig;
 import ca.yorku.triagedesk.detect.DetectionEngine;
+import ca.yorku.triagedesk.domain.AgentResult;
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.DashboardStats;
 import ca.yorku.triagedesk.domain.Finding;
 import ca.yorku.triagedesk.domain.SecurityEvent;
+import ca.yorku.triagedesk.domain.TriageVerdict;
 import ca.yorku.triagedesk.ingest.EventStore;
 import ca.yorku.triagedesk.ingest.LogParser;
 import ca.yorku.triagedesk.ingest.LogParserFactory;
@@ -15,10 +25,13 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Facade over the TriageDesk subsystems: one method per feature, shared by the JavaFX
@@ -34,13 +47,19 @@ public class SocAssistant {
     private final LogParserFactory parserFactory;
     private final DetectionEngine detectionEngine;
     private final CaseManager caseManager;
+    private final Supplier<SocAgent> agentFactory;
+    private SocAgent agent;
 
-    public SocAssistant(EventStore eventStore, LogParserFactory parserFactory,
-                        DetectionEngine detectionEngine, CaseManager caseManager) {
+    /**
+     * @param agentFactory creates the agent on first use, so a missing API key only affects the AI features
+     */
+    public SocAssistant(EventStore eventStore, LogParserFactory parserFactory, DetectionEngine detectionEngine,
+                        CaseManager caseManager, Supplier<SocAgent> agentFactory) {
         this.eventStore = eventStore;
         this.parserFactory = parserFactory;
         this.detectionEngine = detectionEngine;
         this.caseManager = caseManager;
+        this.agentFactory = agentFactory;
     }
 
     /** Builds the standard subsystems from the configuration and loads the saved events and cases. */
@@ -50,12 +69,26 @@ public class SocAssistant {
 
     /** Same as {@link #create(AppConfig)} but with an explicit data folder (CLI --data-dir option). */
     public static SocAssistant create(AppConfig config, Path dataDir) {
+        return create(config, dataDir, () -> LlmClients.create(config));
+    }
+
+    /** With a given model client, for tests and for choosing the client elsewhere. */
+    public static SocAssistant create(AppConfig config, Path dataDir, LlmClient llm) {
+        return create(config, dataDir, () -> llm);
+    }
+
+    private static SocAssistant create(AppConfig config, Path dataDir, Supplier<LlmClient> llm) {
         EventStore store = new EventStore(dataDir);
         store.load();
         CaseManager cases = new CaseManager(dataDir);
         cases.load();
+        // The facade creates the agent's tools with their receivers and registers them (Stage 1, 4.7).
+        ToolRegistry tools = new ToolRegistry()
+                .register(new SearchEventsTool(store))
+                .register(new CountByTool(store));
         return new SocAssistant(store, new LogParserFactory(config.getLogTimeZone()),
-                DetectionEngine.withStandardDetectors(config), cases);
+                DetectionEngine.withStandardDetectors(config), cases,
+                () -> new SocAgent(llm.get(), tools, config.getLlmMaxSteps()));
     }
 
     // F01, F02: import a Wazuh alerts file or a raw log
@@ -131,6 +164,78 @@ public class SocAssistant {
 
     public Case addNote(String caseId, String text) {
         return caseManager.addNote(caseId, text);
+    }
+
+    // F06: AI case triage
+
+    /**
+     * Lets the agent investigate the case and stores its verdict; a NEW case moves to
+     * INVESTIGATING. If the AI service fails, the case is left unchanged.
+     *
+     * @throws IllegalStateException if the case is closed, or no API key is configured
+     * @throws LlmException          if the AI service cannot be reached
+     */
+    public TriageVerdict triageCase(String caseId) {
+        Case c = caseManager.getCase(caseId);
+        if (c.isClosed()) {
+            throw new IllegalStateException(c.getId() + " is closed; reopen it before running AI triage");
+        }
+        TriageVerdict v = agent().triage(c);
+        caseManager.recordVerdict(c.getId(), v);
+        return v;
+    }
+
+    // F04: AI log summary
+
+    /** @throws IllegalArgumentException if no file with that batch ID was imported (no model call is made) */
+    public AgentResult summarizeLog(String batchId) {
+        List<SecurityEvent> batch = eventStore.getBatch(batchId);
+        if (batch.isEmpty()) {
+            throw new IllegalArgumentException("No imported file named '" + batchId + "'. Imported files: "
+                    + (listBatches().isEmpty() ? "none" : String.join(", ", listBatches())));
+        }
+        return agent().summarize(batchId, batch.size(), timeRange(batch));
+    }
+
+    // F12: ask the agent
+
+    /** @throws IllegalStateException if nothing has been imported yet (no model call is made) */
+    public AgentResult ask(String question) {
+        if (question == null || question.isBlank()) {
+            throw new IllegalArgumentException("Type a question");
+        }
+        if (eventStore.size() == 0) {
+            throw new IllegalStateException("Import a file first");
+        }
+        List<String> files = new ArrayList<>();
+        for (String b : listBatches()) {
+            files.add(b + " (" + eventStore.getBatch(b).size() + " events)");
+        }
+        String context = eventStore.size() + " events in " + String.join(", ", files) + ", " + timeRange(eventStore.all());
+        return agent().answer(question.strip(), context);
+    }
+
+    /** Which model the AI features use, for example "openai-compatible gpt-4o-mini at api.openai.com". */
+    public String describeModel() {
+        return agent().describeModel();
+    }
+
+    /** Tokens used by the most recent AI request. */
+    public TokenUsage getLastUsage() {
+        return agent == null ? TokenUsage.NONE : agent.getLastUsage();
+    }
+
+    private synchronized SocAgent agent() {
+        if (agent == null) {
+            agent = agentFactory.get();
+        }
+        return agent;
+    }
+
+    private static String timeRange(List<SecurityEvent> events) {
+        Instant first = events.stream().map(SecurityEvent::timestamp).min(Comparator.naturalOrder()).orElseThrow();
+        Instant last = events.stream().map(SecurityEvent::timestamp).max(Comparator.naturalOrder()).orElseThrow();
+        return "from " + first + " to " + last;
     }
 
     // F13: dashboard
