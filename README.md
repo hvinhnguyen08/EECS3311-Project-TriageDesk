@@ -88,6 +88,7 @@ Closing accepts `tp` and `fp` as short forms of `true_positive` and `false_posit
 | `ca.yorku.triagedesk.ingest` | `LogParserFactory` (Factory Method), `LogParser` and `WazuhAlertParser`, `AuthLogParser`, `ApacheLogParser`; `EventStore` (events in memory and in `data/events.jsonl`) |
 | `ca.yorku.triagedesk.detect` | `DetectionEngine` (Strategy context) and the `Detector` strategies `WazuhAlertDetector`, `BruteForceDetector`, `SuccessAfterFailureDetector`, `WebScanDetector` |
 | `ca.yorku.triagedesk.casemgmt` | `CaseManager`: groups findings into prioritised cases, applies lifecycle actions and notes, and saves each case to `data/cases/CASE-nnnn.json`; `CaseState` and `NewState`, `InvestigatingState`, `EscalatedState`, `ClosedState` (State pattern) |
+| `ca.yorku.triagedesk.agent` | `LlmClient` (Strategy) with `OpenAiClient` (any OpenAI-compatible service: OpenAI, Groq, OpenRouter, Ollama) and `MockLlmClient` (offline, scripted); `ChatMessage`, `ToolCall`, `LlmReply` |
 | `ca.yorku.triagedesk.util` | `Json`: shared Jackson configuration |
 
 ### Detection rules

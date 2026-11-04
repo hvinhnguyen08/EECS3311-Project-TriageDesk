@@ -26,6 +26,7 @@ public final class AppConfig {
     private final String llmApiKey;
     private final String llmModel;
     private final int llmMaxSteps;
+    private final Duration llmTimeout;
     private final String abuseIpDbApiKey;
     private final String virusTotalApiKey;
     private final Path dataDir;
@@ -44,6 +45,7 @@ public final class AppConfig {
         this.llmApiKey = cleanKey(values.get("LLM_API_KEY"));
         this.llmModel = values.getOrDefault("LLM_MODEL", "gpt-4o-mini").trim();
         this.llmMaxSteps = parsePositiveInt(values.get("LLM_MAX_STEPS"), 6);
+        this.llmTimeout = Duration.ofSeconds(parsePositiveInt(values.get("LLM_TIMEOUT_SECONDS"), 60));
         this.abuseIpDbApiKey = cleanKey(values.get("ABUSEIPDB_API_KEY"));
         this.virusTotalApiKey = cleanKey(values.get("VIRUSTOTAL_API_KEY"));
         this.dataDir = Path.of(values.getOrDefault("TRIAGEDESK_DATA_DIR", "./data").trim());
@@ -150,6 +152,7 @@ public final class AppConfig {
     public String getLlmApiKey() { return llmApiKey; }
     public String getLlmModel() { return llmModel; }
     public int getLlmMaxSteps() { return llmMaxSteps; }
+    public Duration getLlmTimeout() { return llmTimeout; }
     public String getAbuseIpDbApiKey() { return abuseIpDbApiKey; }
     public String getVirusTotalApiKey() { return virusTotalApiKey; }
     public Path getDataDir() { return dataDir; }
