@@ -88,7 +88,7 @@ Closing accepts `tp` and `fp` as short forms of `true_positive` and `false_posit
 | `ca.yorku.triagedesk.ingest` | `LogParserFactory` (Factory Method), `LogParser` and `WazuhAlertParser`, `AuthLogParser`, `ApacheLogParser`; `EventStore` (events in memory and in `data/events.jsonl`) |
 | `ca.yorku.triagedesk.detect` | `DetectionEngine` (Strategy context) and the `Detector` strategies `WazuhAlertDetector`, `BruteForceDetector`, `SuccessAfterFailureDetector`, `WebScanDetector` |
 | `ca.yorku.triagedesk.casemgmt` | `CaseManager`: groups findings into prioritised cases, applies lifecycle actions and notes, and saves each case to `data/cases/CASE-nnnn.json`; `CaseState` and `NewState`, `InvestigatingState`, `EscalatedState`, `ClosedState` (State pattern) |
-| `ca.yorku.triagedesk.agent` | `LlmClient` (Strategy) with `OpenAiClient` (any OpenAI-compatible service: OpenAI, Groq, OpenRouter, Ollama) and `MockLlmClient` (offline, scripted); `ChatMessage`, `ToolCall`, `LlmReply` |
+| `ca.yorku.triagedesk.agent` | `SocAgent` (tool-use loop); `Tool` commands `SearchEventsTool`, `CountByTool` in a `ToolRegistry` (Command); `LlmClient` (Strategy) with `OpenAiClient` (any OpenAI-compatible service: OpenAI, Groq, OpenRouter, Ollama) and `MockLlmClient` (offline, scripted); `ChatMessage`, `ToolCall`, `LlmReply` |
 | `ca.yorku.triagedesk.util` | `Json`: shared Jackson configuration |
 
 ### Detection rules
@@ -105,6 +105,15 @@ On the three sample files together the detectors produce 8 findings: 5 Wazuh ale
 ### Cases
 
 Related findings share a case: the same source IP, or the same host for a finding without an IP, within 60 minutes. A case's severity is the highest of its findings; its priority (0 to 100) is 20 per severity level plus 5 per extra finding (at most 15) plus 5 when more than one detector agrees. Running detections again does not duplicate anything. The 8 sample findings become 3 cases: the SSH compromise of `deploy` on web01 (4 findings, priority 80), the rootkit alert on db01 (CRITICAL, 80) and the web scan and SQL injection from 198.51.100.23 (3 findings, 75).
+
+### How the agent works
+
+`SocAgent.runLoop` sends the task and the tools allowed for it to the model. When the model asks for a tool, the agent runs it on the imported data and sends the result back; this repeats until the model answers or `LLM_MAX_STEPS` (default 6) is reached, after which the model is asked once, without tools, for its best answer and the result is marked incomplete. Tool errors (for example an unknown filter) are returned to the model so it can correct the call. Every call is recorded in a tool trace shown to the analyst, so each fact in an answer can be checked.
+
+| Tool | What it does |
+|---|---|
+| `search_events` | Events matching filters (batchId, source, host, user, srcIp, category, ruleId, text, since, until, minLevel): total count plus up to 50 events |
+| `count_by` | Counts of matching events grouped by a field (srcIp, user, host, ..., or an attribute such as status), largest first |
 
 ### Case lifecycle
 
