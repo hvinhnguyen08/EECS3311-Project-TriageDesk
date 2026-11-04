@@ -37,7 +37,16 @@ mvn test
 mvn package
 ```
 
-`mvn package` runs the tests and builds `target/triagedesk.jar` with all dependencies.
+`mvn package` runs the tests and builds `target/triagedesk.jar` with all dependencies (including JavaFX). `mvn test -Dgui.snapshots=true` also renders the GUI screens to `target/gui-snapshots/*.png` (needs a display).
+
+### Graphical interface
+
+```
+mvn package
+.	riagedesk-gui.cmd        (Windows; ./triagedesk-gui on macOS/Linux)
+```
+
+or, from the sources, `mvn javafx:run`. The GUI uses the same `.env` and data folder as the CLI, so cases created in one appear in the other. The **Cases and imports** tab imports files (several at once), runs the detections, lists the cases by priority (coloured by severity; double-click to open one) and shows the AI summary of a selected file with the agent's tool calls. AI and network work runs in the background with a progress indicator, so the window stays responsive.
 
 ### Command-line interface
 
@@ -89,6 +98,7 @@ Closing accepts `tp` and `fp` as short forms of `true_positive` and `false_posit
 
 | Package | Contents |
 |---|---|
+| `ca.yorku.triagedesk.gui` | JavaFX GUI (MVC): `TriageDeskApp`, `MainView`/`MainViewFx` and `MainController`, `UiTasks` for background work |
 | `ca.yorku.triagedesk.cli` | `TriageDeskCli`: picocli command-line interface |
 | `ca.yorku.triagedesk.facade` | `SocAssistant` (Facade): one method per feature, used by the CLI and the GUI |
 | `ca.yorku.triagedesk.config` | `AppConfig`: loads `.env` and environment variables |

@@ -1,0 +1,30 @@
+.root {
+    -fx-font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -fx-font-size: 13px;
+}
+
+.heading {
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+
+.muted {
+    -fx-text-fill: #666666;
+}
+
+.status-bar {
+    -fx-background-color: #f0f0f0;
+    -fx-border-color: #d0d0d0 transparent transparent transparent;
+}
+
+/* Case table: severity at a glance; closed cases are greyed out */
+.table-row-cell.sev-critical { -fx-background-color: #f8d7da; }
+.table-row-cell.sev-high { -fx-background-color: #fde2cf; }
+.table-row-cell.sev-medium { -fx-background-color: #fff3cd; }
+.table-row-cell.closed .text { -fx-fill: #888888; }
+.table-row-cell:selected { -fx-background-color: #3d7bd9; }
+.table-row-cell:selected .text { -fx-fill: white; }
+
+.case-text {
+    -fx-font-family: "Consolas", "Menlo", monospace;
+}

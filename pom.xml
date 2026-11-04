@@ -18,9 +18,15 @@
         <junit.version>5.10.3</junit.version>
         <jackson.version>2.17.2</jackson.version>
         <picocli.version>4.7.6</picocli.version>
+        <javafx.version>21.0.5</javafx.version>
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
         <dependency>
             <groupId>info.picocli</groupId>
             <artifactId>picocli</artifactId>
@@ -55,6 +61,15 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+            </plugin>
+            <!-- mvn javafx:run starts the GUI from the sources -->
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.8</version>
+                <configuration>
+                    <mainClass>ca.yorku.triagedesk.gui.TriageDeskApp</mainClass>
+                </configuration>
             </plugin>
             <!-- mvn package builds target/triagedesk.jar with all dependencies, run by triagedesk.cmd / ./triagedesk -->
             <plugin>

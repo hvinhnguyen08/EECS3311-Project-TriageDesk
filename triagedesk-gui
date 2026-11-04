@@ -1,0 +1,3 @@
+#!/bin/sh
+# Starts the TriageDesk GUI on macOS/Linux. Build it first with: mvn package
+exec java -cp "$(dirname "$0")/target/triagedesk.jar" ca.yorku.triagedesk.gui.GuiLauncher "$@"
