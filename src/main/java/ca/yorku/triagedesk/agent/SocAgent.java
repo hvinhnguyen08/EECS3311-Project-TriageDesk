@@ -35,6 +35,8 @@ public class SocAgent {
             + " Answer now using only the information you already have, and say what you could not check.";
 
     private static final List<String> EVENT_TOOLS = List.of(SearchEventsTool.NAME, CountByTool.NAME);
+    /** Triage and questions may also check indicator reputations; the summary only reads the file. */
+    private static final List<String> INVESTIGATION_TOOLS = List.of(SearchEventsTool.NAME, CountByTool.NAME, LookupIocTool.NAME);
 
     private final LlmClient llm;
     private final ToolRegistry tools;
@@ -61,7 +63,7 @@ public class SocAgent {
     public TriageVerdict triage(Case c) {
         String prompt = "Investigate this case and give your verdict.\n\nCase facts (JSON):\n" + caseFacts(c)
                 + "\n\nThe evidence sample shows at most " + EVIDENCE_SAMPLE + " events; use the tools to look further.";
-        AgentResult r = runLoop(Prompts.TRIAGE, prompt, tools, available(EVENT_TOOLS));
+        AgentResult r = runLoop(Prompts.TRIAGE, prompt, tools, available(INVESTIGATION_TOOLS));
         return parseVerdict(r);
     }
 
@@ -92,7 +94,7 @@ public class SocAgent {
      */
     public AgentResult answer(String question, String context) {
         String prompt = "Imported data: " + context + "\n\nQuestion: " + question;
-        return runLoop(Prompts.ANSWER, prompt, tools, available(EVENT_TOOLS));
+        return runLoop(Prompts.ANSWER, prompt, tools, available(INVESTIGATION_TOOLS));
     }
 
     /** Tokens used by the most recent task (for the GUI/CLI and the AI cost record). */

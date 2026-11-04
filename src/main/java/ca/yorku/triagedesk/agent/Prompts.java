@@ -19,6 +19,8 @@ final class Prompts {
             Important: events that happen on the host itself (sudo, file changes, rootcheck and syscheck alerts) \
             have NO source IP, so a search filtered by srcIp never finds them. Search those by host (and user) \
             without srcIp.
+            If the lookup_ioc tool is available, check the reputation of the external source IPs and of any \
+            URLs, domains or file hashes in the evidence (case facts may already list enriched IOCs).
             Consider every finding in the case, and mention the most important follow-up activity in your reasoning.
             Rules: base every statement on the case facts or on tool results; never invent events, counts or \
             IP addresses; if the evidence is not enough, say so.

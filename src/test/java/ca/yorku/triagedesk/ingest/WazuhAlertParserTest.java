@@ -49,6 +49,15 @@ class WazuhAlertParserTest {
     }
 
     @Test
+    void syscheckAlertsKeepTheFileAndHash() throws IOException {
+        SecurityEvent e = parser.parse(LogParserFactory.readLines(Path.of("samples/alerts.json")), "alerts.json").get(6);
+
+        assertEquals("550", e.ruleId());
+        assertEquals("/home/deploy/.ssh/authorized_keys", e.attribute("file"));
+        assertEquals("9f2c4a0d7b1e3c5a8f6d2b4e0c1a3f5d7b9e2c4a6f8d0b1e3c5a7f9d2b4e6c8a", e.attribute("sha256"));
+    }
+
+    @Test
     void malformedAlertsAreSkipped() throws IOException {
         List<SecurityEvent> events = parser.parse(
                 LogParserFactory.readLines(Path.of("samples/errors/alerts-with-bad-lines.json")), "bad.json");

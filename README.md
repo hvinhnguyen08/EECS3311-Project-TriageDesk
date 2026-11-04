@@ -52,6 +52,7 @@ Run the CLI with `.\triagedesk.cmd` on Windows (PowerShell needs the `.\`) or `.
 | `status CASE_ID ACTION [-m TEXT] [--as RESOLUTION]` | F09 | `triagedesk status CASE-0001 escalate -m "deploy account compromised"`<br>`triagedesk status CASE-0002 close --as true_positive -m "Blocked at the WAF"` |
 | `note CASE_ID TEXT...` | F09 | `triagedesk note CASE-0001 Disabled the deploy account` |
 | `stats` | F13 | `triagedesk stats` |
+| `enrich CASE_ID` | F07 | `triagedesk enrich CASE-0001` |
 | `triage CASE_ID` | F06 | `triagedesk triage CASE-0001` |
 | `summarize FILE_NAME` | F04 | `triagedesk summarize auth.log` |
 | `ask QUESTION...` | F12 | `triagedesk ask Which IPs failed SSH login more than 10 times?` |
@@ -92,6 +93,7 @@ Closing accepts `tp` and `fp` as short forms of `true_positive` and `false_posit
 | `ca.yorku.triagedesk.detect` | `DetectionEngine` (Strategy context) and the `Detector` strategies `WazuhAlertDetector`, `BruteForceDetector`, `SuccessAfterFailureDetector`, `WebScanDetector` |
 | `ca.yorku.triagedesk.casemgmt` | `CaseManager`: groups findings into prioritised cases, applies lifecycle actions and notes, and saves each case to `data/cases/CASE-nnnn.json`; `CaseState` and `NewState`, `InvestigatingState`, `EscalatedState`, `ClosedState` (State pattern) |
 | `ca.yorku.triagedesk.agent` | `SocAgent` (tool-use loop, triage, summary, answers); `Tool` commands `SearchEventsTool`, `CountByTool` in a `ToolRegistry` (Command), `BatchScopedTool` (Decorator); `LlmClient` (Strategy) with `OpenAiClient` (any OpenAI-compatible service: OpenAI, Groq, OpenRouter, Ollama) and `MockLlmClient` (offline, scripted); `ChatMessage`, `ToolCall`, `LlmReply` |
+| `ca.yorku.triagedesk.intel` | `EnrichmentService` (IOC extraction, lookups, 24 h cache), `IocExtractor`; `ThreatIntelProvider` with the adapters `AbuseIpDbAdapter` and `VirusTotalAdapter` (Adapter) built on `RestIntelAdapter` (Template Method) |
 | `ca.yorku.triagedesk.util` | `Json`: shared Jackson configuration |
 
 ### Detection rules
@@ -117,8 +119,13 @@ Related findings share a case: the same source IP, or the same host for a findin
 |---|---|
 | `search_events` | Events matching filters (batchId, source, host, user, srcIp, category, ruleId, text, since, until, minLevel): total count plus up to 50 events |
 | `count_by` | Counts of matching events grouped by a field (srcIp, user, host, ..., or an attribute such as status), largest first |
+| `lookup_ioc` | Reputation (0 to 100) of an IP, domain, URL or hash from AbuseIPDB and VirusTotal; private IPs are never sent out (triage and questions only) |
 
 The AI commands (`triage`, `summarize`, `ask`) print the agent's answer, every tool call it made, and the tokens used. `triage` stores the verdict on the case and moves a NEW case to INVESTIGATING; anything that is not a valid JSON verdict, or a run that hit the step limit, is stored as NEEDS_REVIEW. `summarize` limits the tools to the chosen file. With `LLM_PROVIDER=mock` the commands run offline: they make real tool calls but say clearly that no model assessed the data.
+
+### Threat-intel enrichment
+
+`enrich CASE_ID` extracts the case's IPv4 addresses, URLs (and their domains) and MD5/SHA-1/SHA-256 hashes, looks each one up with every configured service and stores the result on the case. Free API keys from [AbuseIPDB](https://www.abuseipdb.com/) (IPs) and [VirusTotal](https://www.virustotal.com/) (IPs, domains, URLs, hashes) go in `.env` as `ABUSEIPDB_API_KEY` and `VIRUSTOTAL_API_KEY`; a service without a key is skipped and its indicators are listed with score `n/a`. Private addresses are never sent out, results are cached for 24 hours in `data/intel-cache.json`, and a timeout or rate limit only marks that service's answer as unavailable. The sample data uses reserved documentation addresses, so real services report them as clean.
 
 ### Case lifecycle
 

@@ -123,6 +123,20 @@ class TriageDeskCliTest {
     }
 
     @Test
+    void enrichWithoutThreatIntelKeys() {
+        run("import", "samples/alerts.json", "samples/auth.log", "samples/access.log");
+        run("detect");
+
+        Run enrich = run("enrich", "CASE-0002");
+        assertEquals(0, enrich.exitCode(), enrich.err());
+        assertTrue(enrich.out().startsWith("No threat-intel provider configured"), enrich.out());
+        assertTrue(enrich.out().contains("ip       n/a  198.51.100.23"), enrich.out());
+        assertTrue(enrich.out().contains("domain   n/a  sqlmap.org"));
+        assertTrue(run("show", "CASE-0002").out().contains("Indicators:"));
+        assertTrue(run("enrich", "CASE-0003").out().contains("No indicators found."));
+    }
+
+    @Test
     void statsWithAndWithoutData() {
         assertTrue(run("stats").out().contains("No data. Import a file to begin."));
 

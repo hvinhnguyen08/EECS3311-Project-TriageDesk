@@ -2,6 +2,7 @@ package ca.yorku.triagedesk.casemgmt;
 
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.Finding;
+import ca.yorku.triagedesk.domain.Ioc;
 import ca.yorku.triagedesk.domain.SecurityEvent;
 import ca.yorku.triagedesk.domain.TriageVerdict;
 import ca.yorku.triagedesk.util.Json;
@@ -172,6 +173,15 @@ public class CaseManager {
         if (NewState.NAME.equals(c.getState().name())) {
             c.startInvestigation();
         }
+        warnings.clear();
+        save(c);
+        return c;
+    }
+
+    /** Stores the case's enriched indicators and saves it. */
+    public synchronized Case recordIocs(String caseId, List<Ioc> iocs) {
+        Case c = getCase(caseId);
+        c.setIocs(iocs);
         warnings.clear();
         save(c);
         return c;

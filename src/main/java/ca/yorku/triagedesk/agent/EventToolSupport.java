@@ -14,7 +14,7 @@ final class EventToolSupport {
 
     private static final int MESSAGE_CHARS = 200;
     private static final List<String> SHOWN_ATTRIBUTES =
-            List.of("status", "method", "path", "userAgent", "command", "denied", "groups");
+            List.of("status", "method", "path", "userAgent", "command", "denied", "groups", "file", "sha256");
 
     private EventToolSupport() {
     }

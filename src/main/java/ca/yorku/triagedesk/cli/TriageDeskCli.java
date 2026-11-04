@@ -6,6 +6,7 @@ import ca.yorku.triagedesk.domain.AgentResult;
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.DashboardStats;
 import ca.yorku.triagedesk.domain.Finding;
+import ca.yorku.triagedesk.domain.Ioc;
 import ca.yorku.triagedesk.domain.TriageVerdict;
 import ca.yorku.triagedesk.facade.DetectionResult;
 import ca.yorku.triagedesk.facade.ImportResult;
@@ -142,6 +143,10 @@ public class TriageDeskCli implements Runnable {
         }
         out.println();
         out.println("ATT&CK technique IDs from detections: " + (techniqueIds.isEmpty() ? "none" : String.join(", ", techniqueIds)));
+        if (!c.getIocs().isEmpty()) {
+            out.println("Indicators:");
+            printIocs(out, c.getIocs());
+        }
         out.println("AI verdict: " + (c.getVerdict() == null ? "not triaged yet"
                 : String.format(Locale.ROOT, "%s (confidence %.2f)", c.getVerdict().verdict(), c.getVerdict().confidence())));
         out.println("Allowed actions: " + String.join(", ", c.getState().allowedActions()));
@@ -169,6 +174,24 @@ public class TriageDeskCli implements Runnable {
              @Parameters(index = "1..*", arity = "1..*", paramLabel = "TEXT") List<String> words) {
         Case c = assistant().addNote(caseId, String.join(" ", words));
         out().printf("Note added to %s (%d notes).%n", c.getId(), c.getNotes().size());
+        return 0;
+    }
+
+    // F07
+
+    @Command(name = "enrich", description = "Extract a case's IPs, URLs, domains and hashes and look up their reputation.")
+    int enrich(@Parameters(paramLabel = "CASE_ID") String caseId) {
+        List<String> providers = assistant().threatIntelProviders();
+        out().println(providers.isEmpty()
+                ? "No threat-intel provider configured (set ABUSEIPDB_API_KEY or VIRUSTOTAL_API_KEY in .env);"
+                        + " indicators are listed without scores."
+                : "Looking up indicators with " + String.join(", ", providers) + " ...");
+        List<Ioc> iocs = assistant().enrichIocs(caseId);
+        if (iocs.isEmpty()) {
+            out().println("No indicators found.");
+            return 0;
+        }
+        printIocs(out(), iocs);
         return 0;
     }
 
@@ -240,6 +263,15 @@ public class TriageDeskCli implements Runnable {
                     ? c.getTitle().substring(0, TITLE_WIDTH - 3) + "..." : c.getTitle();
             out.printf("%-10s %-13s %-8s %3d %4d  %s%n", c.getId(), c.getState().name(), c.getSeverity(),
                     c.getPriority(), c.getFindings().size(), title);
+        }
+    }
+
+    private static void printIocs(PrintWriter out, List<Ioc> iocs) {
+        out.printf("  %-6s %5s  %-40s %s%n", "TYPE", "SCORE", "VALUE", "SOURCE");
+        for (Ioc i : iocs) {
+            String value = i.value().length() > 40 ? i.value().substring(0, 37) + "..." : i.value();
+            out.printf("  %-6s %5s  %-40s %s%n", i.type(), i.isScored() ? String.valueOf(i.score()) : "n/a", value,
+                    i.source() == null ? "" : i.source());
         }
     }
 

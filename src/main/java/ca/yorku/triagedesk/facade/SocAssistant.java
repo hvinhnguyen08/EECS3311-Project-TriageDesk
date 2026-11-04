@@ -4,6 +4,7 @@ import ca.yorku.triagedesk.agent.CountByTool;
 import ca.yorku.triagedesk.agent.LlmClient;
 import ca.yorku.triagedesk.agent.LlmClients;
 import ca.yorku.triagedesk.agent.LlmException;
+import ca.yorku.triagedesk.agent.LookupIocTool;
 import ca.yorku.triagedesk.agent.SearchEventsTool;
 import ca.yorku.triagedesk.agent.SocAgent;
 import ca.yorku.triagedesk.agent.TokenUsage;
@@ -15,9 +16,11 @@ import ca.yorku.triagedesk.domain.AgentResult;
 import ca.yorku.triagedesk.domain.Case;
 import ca.yorku.triagedesk.domain.DashboardStats;
 import ca.yorku.triagedesk.domain.Finding;
+import ca.yorku.triagedesk.domain.Ioc;
 import ca.yorku.triagedesk.domain.SecurityEvent;
 import ca.yorku.triagedesk.domain.TriageVerdict;
 import ca.yorku.triagedesk.ingest.EventStore;
+import ca.yorku.triagedesk.intel.EnrichmentService;
 import ca.yorku.triagedesk.ingest.LogParser;
 import ca.yorku.triagedesk.ingest.LogParserFactory;
 import ca.yorku.triagedesk.ingest.UnsupportedFormatException;
@@ -47,6 +50,7 @@ public class SocAssistant {
     private final LogParserFactory parserFactory;
     private final DetectionEngine detectionEngine;
     private final CaseManager caseManager;
+    private final EnrichmentService enrichment;
     private final Supplier<SocAgent> agentFactory;
     private SocAgent agent;
 
@@ -54,11 +58,12 @@ public class SocAssistant {
      * @param agentFactory creates the agent on first use, so a missing API key only affects the AI features
      */
     public SocAssistant(EventStore eventStore, LogParserFactory parserFactory, DetectionEngine detectionEngine,
-                        CaseManager caseManager, Supplier<SocAgent> agentFactory) {
+                        CaseManager caseManager, EnrichmentService enrichment, Supplier<SocAgent> agentFactory) {
         this.eventStore = eventStore;
         this.parserFactory = parserFactory;
         this.detectionEngine = detectionEngine;
         this.caseManager = caseManager;
+        this.enrichment = enrichment;
         this.agentFactory = agentFactory;
     }
 
@@ -69,15 +74,21 @@ public class SocAssistant {
 
     /** Same as {@link #create(AppConfig)} but with an explicit data folder (CLI --data-dir option). */
     public static SocAssistant create(AppConfig config, Path dataDir) {
-        return create(config, dataDir, () -> LlmClients.create(config));
+        return create(config, dataDir, () -> LlmClients.create(config), EnrichmentService.fromConfig(config, dataDir));
     }
 
     /** With a given model client, for tests and for choosing the client elsewhere. */
     public static SocAssistant create(AppConfig config, Path dataDir, LlmClient llm) {
-        return create(config, dataDir, () -> llm);
+        return create(config, dataDir, () -> llm, EnrichmentService.fromConfig(config, dataDir));
     }
 
-    private static SocAssistant create(AppConfig config, Path dataDir, Supplier<LlmClient> llm) {
+    /** With a given model client and threat-intel service (tests use fake providers). */
+    public static SocAssistant create(AppConfig config, Path dataDir, LlmClient llm, EnrichmentService enrichment) {
+        return create(config, dataDir, () -> llm, enrichment);
+    }
+
+    private static SocAssistant create(AppConfig config, Path dataDir, Supplier<LlmClient> llm,
+                                       EnrichmentService enrichment) {
         EventStore store = new EventStore(dataDir);
         store.load();
         CaseManager cases = new CaseManager(dataDir);
@@ -85,9 +96,10 @@ public class SocAssistant {
         // The facade creates the agent's tools with their receivers and registers them (Stage 1, 4.7).
         ToolRegistry tools = new ToolRegistry()
                 .register(new SearchEventsTool(store))
-                .register(new CountByTool(store));
+                .register(new CountByTool(store))
+                .register(new LookupIocTool(enrichment));
         return new SocAssistant(store, new LogParserFactory(config.getLogTimeZone()),
-                DetectionEngine.withStandardDetectors(config), cases,
+                DetectionEngine.withStandardDetectors(config), cases, enrichment,
                 () -> new SocAgent(llm.get(), tools, config.getLlmMaxSteps()));
     }
 
@@ -164,6 +176,25 @@ public class SocAssistant {
 
     public Case addNote(String caseId, String text) {
         return caseManager.addNote(caseId, text);
+    }
+
+    // F07: IOC extraction and threat-intel enrichment
+
+    /**
+     * Extracts the case's indicators, looks them up with the configured providers and saves
+     * them on the case. Provider failures (missing key, timeout, rate limit) only mark the
+     * affected indicators as unavailable. An empty list means no indicators were found.
+     */
+    public List<Ioc> enrichIocs(String caseId) {
+        Case c = caseManager.getCase(caseId);
+        List<Ioc> iocs = enrichment.enrich(c);
+        caseManager.recordIocs(c.getId(), iocs);
+        return iocs;
+    }
+
+    /** Names of the threat-intel services that have an API key (empty if none). */
+    public List<String> threatIntelProviders() {
+        return enrichment.providerNames();
     }
 
     // F06: AI case triage

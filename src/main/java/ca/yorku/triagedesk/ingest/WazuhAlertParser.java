@@ -64,6 +64,8 @@ public class WazuhAlertParser implements LogParser {
                 .attribute("groups", groups.isEmpty() ? null : String.join(",", groups))
                 .attribute("fullLog", text(alert, "full_log"))
                 .attribute("location", text(alert, "location"))
+                .attribute("file", text(alert.path("syscheck"), "path"))
+                .attribute("sha256", text(alert.path("syscheck"), "sha256_after"))
                 .build();
     }
 
