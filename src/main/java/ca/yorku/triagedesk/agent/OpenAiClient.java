@@ -107,7 +107,7 @@ public class OpenAiClient implements LlmClient {
                     + errorDetail(response.body()));
         }
         if (status / 100 != 2) {
-            throw new LlmException("AI service unavailable (HTTP " + status + ")" + errorDetail(response.body()));
+            throw new LlmException("AI service unavailable (HTTP " + status + ")." + errorDetail(response.body()));
         }
         return parseReply(response.body());
     }
@@ -207,7 +207,7 @@ public class OpenAiClient implements LlmClient {
             if (msg.isEmpty()) {
                 return "";
             }
-            return ": " + (msg.length() > 200 ? msg.substring(0, 200) + "..." : msg);
+            return " Provider message: " + (msg.length() > 200 ? msg.substring(0, 200) + "..." : msg);
         } catch (JsonProcessingException | RuntimeException e) {
             return "";
         }

@@ -28,7 +28,9 @@ public class SearchEventsTool implements Tool {
     @Override
     public String description() {
         return "Find imported log events that match all the given filters (oldest first). Returns the total number"
-                + " of matches and up to 'limit' events with their time, host, user, source IP, category and message.";
+                + " of matches and up to 'limit' events with their time, host, user, source IP, category and message."
+                + " Events on a host itself (sudo, file changes, rootcheck/syscheck alerts) have no srcIp, so filtering"
+                + " by srcIp excludes them: search those by host or user.";
     }
 
     @Override
