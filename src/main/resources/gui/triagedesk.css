@@ -40,3 +40,28 @@
     -fx-font-size: 15px;
     -fx-font-weight: bold;
 }
+
+/* Dashboard */
+.tile {
+    -fx-background-color: #f5f7fa;
+    -fx-border-color: #d8dde6;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+
+.tile-value {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+}
+
+/* Ask the Agent */
+.chat-question {
+    -fx-font-weight: bold;
+    -fx-background-color: #e8f0fe;
+    -fx-background-radius: 6;
+    -fx-padding: 6 10 6 10;
+}
+
+.chat-answer {
+    -fx-padding: 0 10 0 10;
+}

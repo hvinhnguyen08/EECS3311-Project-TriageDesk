@@ -47,7 +47,22 @@ public class TriageDeskApp extends Application {
                 mainController.refresh();
             }
         });
-        tabs.getTabs().add(mainTab);
+        DashboardViewFx dashboardView = new DashboardViewFx();
+        DashboardController dashboard = new DashboardController(assistant, dashboardView, tasks);
+        Tab dashboardTab = new Tab("Dashboard", dashboardView.getRoot());
+        dashboardTab.setClosable(false);
+        dashboardTab.setOnSelectionChanged(e -> {
+            if (dashboardTab.isSelected()) {
+                dashboard.refresh();
+            }
+        });
+
+        ChatViewFx chatView = new ChatViewFx();
+        new ChatController(assistant, chatView, tasks);
+        Tab chatTab = new Tab("Ask the Agent", chatView.getRoot());
+        chatTab.setClosable(false);
+
+        tabs.getTabs().addAll(dashboardTab, mainTab, chatTab);
 
         Scene scene = new Scene(tabs, 1200, 760);
         scene.getStylesheets().add(TriageDeskApp.class.getResource("/gui/triagedesk.css").toExternalForm());
@@ -55,6 +70,7 @@ public class TriageDeskApp extends Application {
         stage.setScene(scene);
         stage.show();
         mainController.refresh();
+        dashboard.refresh();
     }
 
     @Override
