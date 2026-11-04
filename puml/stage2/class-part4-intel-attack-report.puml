@@ -1,0 +1,126 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam nodesep 30
+skinparam ranksep 40
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  ArrowColor #333333
+}
+skinparam package {
+  BackgroundColor #F7F7F7
+  BorderColor #999999
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide circle
+hide empty members
+
+title Class Diagram Part 4 (Stage 2): Threat intel (Adapter, Template Method), ATT&CK mapping and report
+top to bottom direction
+package "Threat intel (intel)" {
+  class EnrichmentService {
+    - providers : List<ThreatIntelProvider>
+    - cache : Map<String,CachedResult>
+    - cacheFile : Path
+    --
+    + {static} fromConfig(config : AppConfig, dataDir : Path) : EnrichmentService
+    + enrich(c : Case) : List<Ioc>
+    + lookup(ioc : Ioc) : Ioc
+    + providerNames() : List<String>
+  }
+  class IocExtractor {
+    + {static} extract(events : List<SecurityEvent>) : List<Ioc>
+    + {static} classify(value : String) : String
+    + {static} isPrivateIp(ip : String) : boolean
+  }
+  interface ThreatIntelProvider <<target>> {
+    + name() : String
+    + supports(type : String) : boolean
+    + lookup(type : String, value : String) : IntelResult
+  }
+  abstract class RestIntelAdapter <<template method>> {
+    # baseUrl : String
+    # apiKey : String
+    - http : HttpClient
+    --
+    + {final} lookup(type, value) : IntelResult
+    # {abstract} buildRequest(type, value) : HttpRequest
+    # {abstract} parseScore(json : String) : IntelResult
+    # notFound(type, value) : IntelResult
+  }
+  class AbuseIpDbAdapter <<adapter>> {
+    # buildRequest(type, value) : HttpRequest
+    # parseScore(json) : IntelResult
+  }
+  class VirusTotalAdapter <<adapter>> {
+    # buildRequest(type, value) : HttpRequest
+    # parseScore(json) : IntelResult
+    # notFound(type, value) : IntelResult
+  }
+  class IntelResult <<record>> {
+    score : int
+    summary : String
+  }
+  class ThreatIntelException
+  class "AbuseIPDB API" as AbuseApi <<external REST API>> {
+    GET /api/v2/check
+  }
+  class "VirusTotal API" as VtApi <<external REST API>> {
+    GET /api/v3/{ip_addresses|domains|urls|files}/{id}
+  }
+}
+package "ATT&CK mapping (attack)" {
+  class AttackMapper {
+    - catalogue : Map<String,AttackTechnique>
+    --
+    + {static} loadBundled() : AttackMapper
+    + find(id : String) : AttackTechnique
+    + map(c : Case, askAgent : boolean, suggester : Function<Case,List<String>>) : MappingResult
+  }
+  class MappingResult <<record>> {
+    techniques : List<AttackTechnique>
+    fromDetections : List<String>
+    fromAgent : List<String>
+    rejected : List<String>
+  }
+  class "enterprise-attack-subset.json" as Catalogue <<resource>> {
+    96 techniques
+  }
+}
+package "Report (report)" {
+  class ReportGenerator {
+    + generate(c : Case, narrative : String, out : Path) : Path
+    + render(c : Case, narrative : String) : String
+    ~ buildTimeline(c : Case) : String
+  }
+}
+ThreatIntelProvider <|.. RestIntelAdapter
+RestIntelAdapter <|-- AbuseIpDbAdapter
+RestIntelAdapter <|-- VirusTotalAdapter
+AbuseIpDbAdapter ..> AbuseApi : adapts
+VirusTotalAdapter ..> VtApi : adapts
+RestIntelAdapter ..> IntelResult : returns
+RestIntelAdapter ..> ThreatIntelException : throws
+EnrichmentService "1" o-- "0..*" ThreatIntelProvider : providers with an API key
+EnrichmentService ..> IocExtractor : uses
+EnrichmentService ..> Ioc : creates
+AttackMapper ..> Catalogue : loads
+AttackMapper "1" *-- "*" AttackTechnique
+AttackMapper ..> MappingResult : creates
+AttackMapper ..> SocAgent : suggester = SocAgent::suggestTechniques
+ReportGenerator ..> Case : reads
+class Ioc <<record>>
+class AttackTechnique <<record>>
+class Case
+class SocAgent
+@enduml

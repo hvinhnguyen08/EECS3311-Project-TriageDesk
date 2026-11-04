@@ -1,0 +1,57 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 230
+skinparam ParticipantPadding 6
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide footbox
+autonumber
+
+title SD07 (Stage 2) - Show the Dashboard (F13)
+actor "SOC Analyst" as Analyst
+boundary ":DashboardViewFx" as View
+control ":DashboardController" as Ctl
+participant ":FxUiTasks" as Tasks
+participant ":SocAssistant" as SA
+participant ":EventStore" as Store
+participant ":CaseManager" as CM
+
+Analyst -> View : select the Dashboard tab (or click "Refresh")
+View -> Ctl : refresh()
+Ctl -> Tasks : run(work, onSuccess, onFailure)
+Tasks -> SA : getDashboardStats()
+SA -> Store : size()
+SA -> Store : countBy("srcIp", null)
+SA -> Store : countBy("user", null)
+SA -> CM : countByState()
+CM --> SA : {NEW, INVESTIGATING, ESCALATED, CLOSED} counts
+SA --> Tasks : DashboardStats (top 5 IPs and users)
+Tasks -> SA : listBatches()
+SA --> Tasks : files
+Tasks -> Ctl : onSuccess(stats, files)
+alt stats.isEmpty()
+  Ctl -> View : render(stats, files)
+  View --> Analyst : "No data yet. Import a file ... to begin."
+else
+  Ctl -> View : render(stats, files)
+  View --> Analyst : tiles (events, files, open / closed cases),\nbar charts (top IPs, top accounts), pie chart (cases by state)
+end
+note over Analyst, SA : CLI: triagedesk stats calls the same getDashboardStats() and prints text tables
+@enduml

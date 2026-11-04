@@ -1,0 +1,216 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam nodesep 30
+skinparam ranksep 40
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  ArrowColor #333333
+}
+skinparam package {
+  BackgroundColor #F7F7F7
+  BorderColor #999999
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide circle
+hide empty members
+
+title Class Diagram Part 2 (Stage 2): Domain model and case lifecycle (State)
+top to bottom direction
+package "Domain" {
+  class SecurityEvent <<record>> {
+    id : String
+    batchId : String
+    timestamp : Instant
+    source : String
+    host : String
+    user : String
+    srcIp : String
+    message : String
+    ruleId : String
+    ruleLevel : int
+    mitreIds : List<String>
+    category : String
+    attributes : Map<String,String>
+    --
+    + attribute(key : String) : String
+    + {static} builder(id, batchId, timestamp) : Builder
+  }
+  class Finding <<record>> {
+    detector : String
+    title : String
+    severity : Severity
+    srcIp : String
+    host : String
+    user : String
+    techniqueIds : List<String>
+    firstSeen : Instant
+    lastSeen : Instant
+    events : List<SecurityEvent>
+  }
+  class Case <<context>> {
+    - id : String
+    - title : String
+    - createdAt : Instant
+    - state : CaseState
+    - resolution : Verdict
+    - severity : Severity
+    - priority : int
+    - notes : List<String>
+    - history : List<String>
+    --
+    + startInvestigation() : void
+    + escalate(reason : String) : void
+    + close(verdict : String, comment : String) : void
+    + reopen() : void
+    + setState(s : CaseState) : void
+    + addFinding(f : Finding) : void
+    + addNote(text : String) : void
+    + setIocs(iocs : List<Ioc>) : void
+    + setTechniques(t : List<AttackTechnique>) : void
+    + setVerdict(v : TriageVerdict) : void
+    + setResponsePlan(p : ResponsePlan) : void
+    + getEvents() : List<SecurityEvent>
+    + recordHistory(entry : String) : void
+    + snapshot() : Case.Snapshot
+    + {static} fromSnapshot(s : Case.Snapshot) : Case
+  }
+  class "Case.Snapshot" as Snapshot <<record>> {
+    all fields, state name, resolution
+  }
+  class Ioc <<record>> {
+    type : String
+    value : String
+    score : int
+    source : String
+    --
+    + withScore(score : int, source : String) : Ioc
+    + isScored() : boolean
+  }
+  class AttackTechnique <<record>> {
+    id : String
+    name : String
+    tactic : String
+  }
+  class TriageVerdict <<record>> {
+    verdict : Verdict
+    confidence : double
+    reasoning : String
+    toolTrace : List<String>
+    --
+    + {static} needsReview(raw, trace) : TriageVerdict
+  }
+  class ResponsePlan {
+    - steps : List<String>
+    - done : List<Boolean>
+    --
+    + markDone(index : int) : void
+    + isDone(index : int) : boolean
+    + isComplete() : boolean
+  }
+  class AgentResult <<record>> {
+    text : String
+    toolTrace : List<String>
+    stoppedEarly : boolean
+  }
+  class DashboardStats <<record>> {
+    totalEvents : int
+    topSourceIps : Map<String,Integer>
+    topUsers : Map<String,Integer>
+    casesByState : Map<String,Integer>
+    --
+    + isEmpty() : boolean
+  }
+  enum Severity {
+    LOW
+    MEDIUM
+    HIGH
+    CRITICAL
+  }
+  enum Verdict {
+    TRUE_POSITIVE
+    FALSE_POSITIVE
+    BENIGN
+    NEEDS_REVIEW
+  }
+}
+package "Case lifecycle (casemgmt)" {
+  abstract class CaseState <<state>> {
+    + startInvestigation(c : Case) : void
+    + escalate(c : Case, reason : String) : void
+    + close(c : Case, verdict : String, comment : String) : void
+    + reopen(c : Case) : void
+    + {abstract} name() : String
+    + {abstract} allowedActions() : List<String>
+    + isClosed() : boolean
+    + {static} fromName(name : String) : CaseState
+    # {static} closeCase(c, verdict, comment) : void
+  }
+  class NewState {
+    + startInvestigation(c) : void
+    + close(c, verdict, comment) : void
+  }
+  class InvestigatingState {
+    + escalate(c, reason) : void
+    + close(c, verdict, comment) : void
+  }
+  class EscalatedState {
+    + close(c, verdict, comment) : void
+  }
+  class ClosedState {
+    + reopen(c) : void
+  }
+  class InvalidTransitionException
+  class CaseManager {
+    - cases : Map<String,Case>
+    - casesDir : Path
+    --
+    + load() : void
+    + createCases(findings : List<Finding>) : List<Case>
+    + getCase(caseId : String) : Case
+    + listCases() : List<Case>
+    + applyAction(caseId, action, resolution, comment) : Case
+    + addNote(caseId, text) : Case
+    + recordVerdict(caseId, v : TriageVerdict) : Case
+    + recordIocs(caseId, iocs) : Case
+    + recordTechniques(caseId, techniques) : Case
+    + recordResponsePlan(caseId, plan) : Case
+    + markStepDone(caseId, step : int) : Case
+    + countByState() : Map<String,Integer>
+    + save(c : Case) : boolean
+    ~ groupFindings(f : List<Finding>) : List<List<Finding>>
+    ~ {static} computePriority(c : Case) : int
+  }
+}
+CaseState <|-- NewState
+CaseState <|-- InvestigatingState
+CaseState <|-- EscalatedState
+CaseState <|-- ClosedState
+CaseState ..> InvalidTransitionException : throws (refused action)
+Case "1" --> "1" CaseState : current state
+Case "1" *-- "1..*" Finding
+Finding "*" o-- "1..*" SecurityEvent : evidence
+Case "1" *-- "*" Ioc
+Case "1" o-- "*" AttackTechnique
+Case "1" *-- "0..1" TriageVerdict
+Case "1" *-- "0..1" ResponsePlan
+Case ..> Snapshot : saved as
+Finding --> Severity
+TriageVerdict --> Verdict
+CaseManager "1" *-- "*" Case
+note bottom of InvalidTransitionException
+  CaseState's default methods refuse the action:
+  "Cannot X a case that is S. Allowed: ...".
+  Each state overrides only what it allows.
+end note
+@enduml

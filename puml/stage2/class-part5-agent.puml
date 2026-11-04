@@ -1,0 +1,148 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam nodesep 30
+skinparam ranksep 40
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  ArrowColor #333333
+}
+skinparam package {
+  BackgroundColor #F7F7F7
+  BorderColor #999999
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide circle
+hide empty members
+
+title Class Diagram Part 5 (Stage 2): AI agent (Command, Strategy, Decorator)
+left to right direction
+package "AI agent (agent)" {
+  class SocAgent <<invoker>> {
+    - llm : LlmClient
+    - tools : ToolRegistry
+    - maxSteps : int
+    - lastUsage : TokenUsage
+    --
+    + triage(c : Case) : TriageVerdict
+    + summarize(batchId, eventCount, timeRange) : AgentResult
+    + answer(question, context) : AgentResult
+    + suggestTechniques(c : Case) : List<String>
+    + recommendResponse(c : Case) : ResponsePlan
+    + writeNarrative(c : Case) : String
+    + getLastUsage() : TokenUsage
+    ~ runLoop(system, prompt, registry, toolNames) : AgentResult
+    ~ {static} parseVerdict(r : AgentResult) : TriageVerdict
+    ~ {static} caseFacts(c : Case) : String
+  }
+  interface LlmClient <<strategy>> {
+    + chat(messages : List<ChatMessage>, toolSpecs : List<String>) : LlmReply
+    + describe() : String
+  }
+  class OpenAiClient {
+    - endpoint : URI
+    - apiKey : String
+    - model : String
+    --
+    + {static} fromConfig(config : AppConfig) : OpenAiClient
+  }
+  class MockLlmClient {
+    - scripted : Deque<LlmReply>
+    - responder : Function<List<ChatMessage>,LlmReply>
+  }
+  class OfflineResponder {
+    + apply(messages) : LlmReply
+  }
+  class LlmClients {
+    + {static} create(config : AppConfig) : LlmClient
+  }
+  class ChatMessage <<record>> {
+    role : String
+    content : String
+    toolCalls : List<ToolCall>
+    toolCallId : String
+  }
+  class ToolCall <<record>> {
+    id : String
+    name : String
+    argumentsJson : String
+  }
+  class LlmReply <<record>> {
+    text : String
+    toolCalls : List<ToolCall>
+    promptTokens : int
+    completionTokens : int
+    --
+    + hasToolCall() : boolean
+  }
+  class TokenUsage <<record>> {
+    promptTokens : int
+    completionTokens : int
+    modelCalls : int
+  }
+  class LlmException
+  class ToolRegistry {
+    - tools : Map<String,Tool>
+    --
+    + register(t : Tool) : ToolRegistry
+    + get(name : String) : Tool
+    + has(name : String) : boolean
+    + specs(names : List<String>) : List<String>
+  }
+  interface Tool <<command>> {
+    + name() : String
+    + description() : String
+    + parameters() : String
+    + execute(argsJson : String) : String
+  }
+  class SearchEventsTool <<concrete command>>
+  class CountByTool <<concrete command>>
+  class LookupIocTool <<concrete command>>
+  class BatchScopedTool <<decorator>> {
+    - inner : Tool
+    - batchId : String
+  }
+  class Prompts {
+    TRIAGE, SUMMARY, ANSWER, ATTACK, RESPONSE, NARRATIVE
+  }
+}
+class "LLM service\n(OpenAI-compatible)" as LlmApi <<external REST API>> {
+  POST /chat/completions
+}
+class EventStore
+class EnrichmentService
+LlmClient <|.. OpenAiClient
+LlmClient <|.. MockLlmClient
+MockLlmClient o-- "0..1" OfflineResponder : LLM_PROVIDER=mock
+LlmClients ..> LlmClient : creates
+OpenAiClient ..> LlmApi : HTTPS
+OpenAiClient ..> LlmException : throws
+SocAgent "1" --> "1" LlmClient : uses
+SocAgent "1" --> "1" ToolRegistry
+SocAgent ..> Prompts
+SocAgent ..> ChatMessage : builds
+LlmClient ..> LlmReply : returns
+LlmReply *-- "*" ToolCall
+ChatMessage *-- "*" ToolCall
+SocAgent ..> TokenUsage
+ToolRegistry "1" o-- "*" Tool
+Tool <|.. SearchEventsTool
+Tool <|.. CountByTool
+Tool <|.. LookupIocTool
+Tool <|.. BatchScopedTool
+BatchScopedTool o-- "1" Tool : inner (search_events, count_by)
+SocAgent ..> BatchScopedTool : wraps tools for summarize()
+SearchEventsTool "*" --> "1" EventStore : receiver
+CountByTool "*" --> "1" EventStore : receiver
+LookupIocTool "*" --> "1" EnrichmentService : receiver
+@enduml

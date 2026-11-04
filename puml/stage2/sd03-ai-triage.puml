@@ -1,0 +1,88 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 230
+skinparam ParticipantPadding 6
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide footbox
+autonumber
+
+title SD03 (Stage 2) - AI Case Triage with Tool Use (F06)
+actor "SOC Analyst" as Analyst
+boundary ":CaseViewFx" as View
+control ":CaseController" as Ctl
+participant ":SocAssistant" as SA
+participant ":CaseManager" as CM
+participant ":SocAgent" as Agent
+participant "llm:LlmClient" as LLM
+participant "LLM Service" as Svc <<external service>>
+participant ":ToolRegistry" as Reg
+participant "t:Tool\n(search_events, count_by,\nlookup_ioc)" as Tool
+participant ":EventStore" as Store
+
+Analyst -> View : click "AI triage"
+View -> Ctl : onTriage()
+Ctl -> View : setBusy(true, "The AI agent is investigating...")
+Ctl -> SA : triageCase(caseId)
+SA -> CM : getCase(caseId)
+CM --> SA : c
+alt c is CLOSED
+  SA --> Ctl : IllegalStateException("reopen it before running AI triage")
+else open case
+  SA -> Agent : triage(c)
+  Agent -> Agent : caseFacts(c) (findings, evidence sample,\nIOCs, techniques, notes)
+  Agent -> Agent : runLoop(Prompts.TRIAGE, prompt, tools,\n[search_events, count_by, lookup_ioc])
+  Agent -> Reg : specs(toolNames)
+  Reg --> Agent : JSON schema per tool
+  loop at most maxSteps (6)
+    Agent -> LLM : chat(messages : List<ChatMessage>, toolSpecs)
+    LLM -> Svc : POST /chat/completions (tools, tool_choice=auto)
+    Svc --> LLM : reply
+    LLM --> Agent : LlmReply(text, toolCalls, tokens)\nor LlmException (case unchanged)
+    alt reply.hasToolCall()
+      Agent -> Agent : add assistant message with the tool calls
+      loop each ToolCall (Command)
+        Agent -> Reg : get(call.name)
+        Reg --> Agent : t
+        Agent -> Tool : execute(argumentsJson)
+        Tool -> Store : search(criteria) / countBy(field, criteria)
+        Store --> Tool : events / counts
+        Tool --> Agent : JSON result, or "ERROR: ..." for a bad call
+        Agent -> Agent : add tool message (toolCallId); add trace entry
+      end
+    else final answer
+      note over Agent : leave the loop
+    end
+  end
+  opt step limit reached
+    Agent -> LLM : chat(messages + "answer now", no tools)
+    LLM --> Agent : best answer (stoppedEarly)
+  end
+  Agent -> Agent : parseVerdict(result)
+  note right of Agent : valid JSON verdict -> TriageVerdict;\ninvalid JSON, unknown verdict, bad\nconfidence or stoppedEarly -> NEEDS_REVIEW
+  Agent --> SA : v
+  SA -> CM : recordVerdict(caseId, v)
+  note right of CM : setVerdict(v); a NEW case calls\nstartInvestigation() (State); save(c)
+  CM --> SA : c
+  SA --> Ctl : v
+  Ctl -> SA : getCase(caseId)
+  Ctl -> View : setBusy(false); render(c); showMessage("AI verdict: TRUE_POSITIVE (0.90), 6 tool calls (tokens)")
+end
+@enduml

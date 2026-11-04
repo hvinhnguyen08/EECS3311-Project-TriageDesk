@@ -1,0 +1,93 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 230
+skinparam ParticipantPadding 6
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide footbox
+autonumber
+
+title SD01 (Stage 2) - Import Files and Run Detections (F01, F02, F03, F05)
+actor "SOC Analyst" as Analyst
+boundary ":MainViewFx" as View
+control ":MainController" as Ctl
+participant ":FxUiTasks" as Tasks
+participant ":SocAssistant" as SA
+participant ":LogParserFactory" as Factory
+participant "p:LogParser" as Parser
+participant ":EventStore" as Store
+participant ":DetectionEngine" as Engine
+participant "d:Detector" as Det
+participant ":CaseManager" as CM
+
+Analyst -> View : click "Import files..."
+View -> Ctl : onImport()
+Ctl -> View : showImportDialog()
+View --> Ctl : files (empty if cancelled)
+Ctl -> View : setBusy(true, "Importing...")
+Ctl -> Tasks : run(work, onSuccess, onFailure)
+note right of Tasks : work runs on the background thread;\ncallbacks run on the JavaFX thread
+loop each file
+  Tasks -> SA : importFile(path)
+  SA -> Factory : readLines(path)
+  Factory --> SA : lines
+  SA -> Factory : detectFormat(lines)
+  alt no known format
+    Factory --> SA : UnsupportedFormatException
+    SA --> Tasks : "<file>: Unsupported file format" (collected, next file)
+  else wazuh / auth / apache
+    Factory --> SA : format
+    SA -> Factory : createParser(format)
+    Factory --> SA : p (WazuhAlertParser, AuthLogParser or ApacheLogParser)
+    SA -> Parser : parse(lines, batchId)
+    Parser --> SA : events (malformed lines skipped)
+    SA -> Store : addEvents(events)
+    note right of Store : re-importing a batch replaces it;\nsaved to data/events.jsonl
+    SA --> Tasks : ImportResult(batchId, format, imported, skipped)
+  end
+end
+Tasks -> Ctl : onSuccess(outcome)
+Ctl -> View : setBusy(false); showMessage(counts); showError(failures); showFiles(batchIds)
+
+Analyst -> View : click "Run detections"
+View -> Ctl : onRunDetections()
+Ctl -> Tasks : run(...)
+Tasks -> SA : runDetections()
+alt no events
+  SA --> Tasks : IllegalStateException("Import a file first")
+  Tasks -> Ctl : onFailure(e)
+  Ctl -> View : showError("Import a file first")
+else events imported
+  SA -> Store : all()
+  Store --> SA : events
+  SA -> Engine : runAll(events)
+  loop each registered Detector (Strategy)
+    Engine -> Det : detect(events)
+    Det --> Engine : findings (a failing detector is skipped and reported)
+  end
+  Engine --> SA : findings, oldest first
+  SA -> CM : createCases(findings)
+  note right of CM : skip findings already recorded;\nadd related ones to an open case;\ngroupFindings() the rest (same IP, or host\nwithout IP, within 60 min); computePriority(); save()
+  CM --> SA : cases created or updated
+  SA --> Tasks : DetectionResult(findings, cases, warnings)
+  Tasks -> Ctl : onSuccess(result)
+  Ctl -> View : showMessage("8 findings; 3 case(s)..."); showCases(all cases)
+end
+@enduml

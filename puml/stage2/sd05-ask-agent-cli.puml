@@ -1,0 +1,88 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 230
+skinparam ParticipantPadding 6
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide footbox
+autonumber
+
+title SD05 (Stage 2) - Ask the Agent from the CLI, and AI Log Summary (F12, F04)
+actor "SOC Analyst" as Analyst
+participant ":TriageDeskCli" as Cli
+participant ":SocAssistant" as SA
+participant ":EventStore" as Store
+participant ":SocAgent" as Agent
+participant "llm:LlmClient" as LLM
+participant "LLM Service" as Svc <<external service>>
+participant "b:BatchScopedTool" as Scoped
+participant "t:CountByTool" as Count
+
+Analyst -> Cli : triagedesk ask "Which IPs failed SSH login more than 10 times?"
+Cli -> SA : ask(question)
+alt no events imported
+  SA --> Cli : IllegalStateException("Import a file first")
+  Cli --> Analyst : Error: Import a file first (exit code 1)
+else
+  SA -> Store : batchIds(), getBatch(b), all()
+  SA -> SA : context = "98 events in alerts.json (12 events), ...,\nfrom 2026-10-28T08:40:12Z to ..."
+  SA -> Agent : answer(question, context)
+  Agent -> Agent : runLoop(Prompts.ANSWER, ..., [search_events, count_by, lookup_ioc])
+  loop until final answer or maxSteps
+    Agent -> LLM : chat(messages, toolSpecs)
+    LLM -> Svc : POST /chat/completions
+    Svc --> LLM : reply
+    LLM --> Agent : LlmReply (tool calls or answer)
+    opt tool calls
+      Agent -> Count : execute({"field":"srcIp","category":"auth_failure"})
+      Count -> Store : countBy("srcIp", criteria)
+      Store --> Count : counts, largest first
+      Count --> Agent : JSON result
+    end
+  end
+  Agent --> SA : AgentResult(text, toolTrace, stoppedEarly)
+  SA --> Cli : result
+  Cli --> Analyst : answer, "Tool calls (n)", "Model calls: 2, tokens: ..."
+end
+
+== AI log summary (GUI "Summarise with AI" or triagedesk summarize auth.log) ==
+Analyst -> Cli : triagedesk summarize auth.log
+Cli -> SA : summarizeLog("auth.log")
+SA -> Store : getBatch("auth.log")
+alt unknown or empty file
+  SA --> Cli : IllegalArgumentException (no model call)
+else
+  SA -> Agent : summarize("auth.log", 35, timeRange)
+  Agent -> Scoped ** : new BatchScopedTool(count_by, "auth.log")
+  note right of Scoped : Decorator: same tool, batchId forced\nand hidden from the model
+  Agent -> Agent : runLoop(Prompts.SUMMARY, ..., scoped registry)
+  Agent -> LLM : chat(messages, specs)
+  LLM --> Agent : tool call count_by
+  Agent -> Scoped : execute({"field":"user"})
+  Scoped -> Count : execute({"field":"user","batchId":"auth.log"})
+  Count -> Store : countBy("user", {batchId: auth.log})
+  Count --> Scoped : counts
+  Scoped --> Agent : counts
+  Agent -> LLM : chat(... tool result ...)
+  LLM --> Agent : summary text
+  Agent --> SA : AgentResult
+  SA --> Cli : summary, tool calls, token use
+end
+@enduml

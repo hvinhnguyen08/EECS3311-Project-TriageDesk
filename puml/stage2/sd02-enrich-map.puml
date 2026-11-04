@@ -1,0 +1,88 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 230
+skinparam ParticipantPadding 6
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide footbox
+autonumber
+
+title SD02 (Stage 2) - Enrich IOCs and Map to ATT&CK (F07, F08)
+actor "SOC Analyst" as Analyst
+boundary ":CaseViewFx" as View
+control ":CaseController" as Ctl
+participant ":SocAssistant" as SA
+participant ":CaseManager" as CM
+participant ":EnrichmentService" as ES
+participant "IocExtractor" as Ext
+participant "p:ThreatIntelProvider\n(AbuseIpDbAdapter /\nVirusTotalAdapter)" as Prov
+participant "Threat Intel API" as TI <<external>>
+participant ":AttackMapper" as AM
+participant ":SocAgent" as Agent
+
+Analyst -> View : click "Enrich IOCs"
+View -> Ctl : onEnrich()
+Ctl -> SA : enrichIocs(caseId)
+note right of Ctl : every controller call goes through\nUiTasks.run (background thread)
+SA -> CM : getCase(caseId)
+CM --> SA : c
+SA -> ES : enrich(c)
+ES -> Ext : extract(c.getEvents())
+Ext --> ES : IOCs (IPs, URLs, domains, hashes; at most 20)
+loop each IOC
+  alt private IP
+    ES -> ES : unavailable, "not sent to external services"
+  else cached less than 24 h ago
+    ES -> ES : cached score
+  else
+    loop each provider that supports the type
+      ES -> Prov : lookup(type, value)
+      note right of Prov : RestIntelAdapter.lookup (Template Method):\nbuildRequest() -> send -> map 401/429/404 -> parseScore()
+      Prov -> TI : HTTPS GET
+      TI --> Prov : JSON
+      Prov --> ES : IntelResult(score 0-100, summary)\nor ThreatIntelException (that provider "unavailable")
+    end
+    ES -> ES : highest score wins; cache it
+  end
+end
+ES --> SA : iocs
+SA -> CM : recordIocs(caseId, iocs)
+CM --> SA : c (saved)
+SA --> Ctl : iocs
+Ctl -> View : render(c); showMessage("2 indicator(s)...")
+
+Analyst -> View : click "Map to ATT&CK" (optionally "also ask the AI")
+View -> Ctl : onMapAttack(askAgent)
+Ctl -> SA : mapAttack(caseId, askAgent)
+SA -> AM : map(c, askAgent, SocAgent::suggestTechniques)
+loop each technique ID on the findings
+  AM -> AM : find(id) in the bundled catalogue
+end
+opt no IDs, or askAgent
+  AM -> Agent : suggestTechniques(c)
+  note right of Agent : runLoop with the case facts, the IDs\nalready mapped and the event tools
+  Agent --> AM : candidate IDs
+  AM -> AM : keep only IDs found in the catalogue (others "rejected")
+end
+AM --> SA : MappingResult(techniques, fromDetections, fromAgent, rejected)
+SA -> CM : recordTechniques(caseId, techniques)
+SA --> Ctl : result
+Ctl -> View : render(c); showMessage("5 technique(s): 4 from detections, 1 from the AI")
+@enduml

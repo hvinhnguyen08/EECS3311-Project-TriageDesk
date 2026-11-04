@@ -176,6 +176,10 @@ The samples are synthetic and use only documentation IP ranges (203.0.113.0/24, 
 
 Differences from the Stage 1 design are recorded in [CHANGES.md](CHANGES.md).
 
+### UML diagrams (Stage 2, as implemented)
+
+Updated class, use-case and sequence diagrams that match the code are in [diagrams/stage2/](diagrams/stage2/) (PNG) with their PlantUML sources and an index in [puml/stage2/](puml/stage2/). The Stage 1 diagrams below are unchanged.
+
 ## Stage 1: design
 
 - Report: [EECS3311-Project-TriageDesk.pdf](EECS3311-Project-TriageDesk.pdf)

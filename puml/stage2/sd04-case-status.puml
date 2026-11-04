@@ -1,0 +1,77 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 230
+skinparam ParticipantPadding 6
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide footbox
+autonumber
+
+title SD04 (Stage 2) - Change Case Status and Add a Note (F09, State pattern)
+actor "SOC Analyst" as Analyst
+boundary ":CaseViewFx" as View
+control ":CaseController" as Ctl
+participant ":SocAssistant" as SA
+participant ":CaseManager" as CM
+participant "c:Case" as Case
+participant "s:InvestigatingState" as State
+participant "ClosedState\n(alternative)" as Closed
+
+Analyst -> View : click "Escalate..."
+note right of View : the button is enabled only if\nc.getState().allowedActions() contains "escalate"
+View -> Ctl : onChangeStatus("escalate")
+Ctl -> View : askEscalationReason()
+alt dialog cancelled
+  View --> Ctl : empty (nothing happens)
+else reason entered
+  View --> Ctl : reason
+  Ctl -> SA : changeStatus(caseId, "escalate", null, reason)
+  SA -> CM : applyAction(caseId, "escalate", null, reason)
+  CM -> CM : getCase(caseId)
+  CM -> Case : escalate(reason)
+  Case -> State : escalate(c, reason)
+  alt current state allows it
+    State -> State : requireReason(reason)
+    State -> Case : setState(new EscalatedState())
+    State -> Case : recordHistory("Escalated: " + reason)
+    CM -> CM : save(c)
+    CM --> SA : c
+    SA --> Ctl : c
+    Ctl -> View : render(c); showMessage("CASE-0001 is now ESCALATED.")
+  else blank reason
+    State --> Ctl : IllegalArgumentException("A reason is required ...")
+    Ctl -> View : showError(...)
+  else state does not allow it (for example CLOSED)
+    Case -> Closed : escalate(c, reason)
+    Closed --> Ctl : InvalidTransitionException("Cannot escalate a case\nthat is CLOSED. Allowed: reopen")
+    Ctl -> View : showError(...); render(unchanged case)
+  end
+end
+
+Analyst -> View : type a note, press Enter
+View -> Ctl : onAddNote(text)
+Ctl -> SA : addNote(caseId, text)
+SA -> CM : addNote(caseId, text)
+CM -> Case : addNote(text)
+note right of Case : rejects an empty note;\ntimestamps the note; recordHistory()
+CM -> CM : save(c)
+SA --> Ctl : c
+Ctl -> View : clearNoteInput(); render(c)
+@enduml

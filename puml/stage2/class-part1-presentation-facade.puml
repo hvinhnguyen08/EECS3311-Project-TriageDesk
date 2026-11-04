@@ -1,0 +1,193 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam nodesep 30
+skinparam ranksep 40
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  ArrowColor #333333
+}
+skinparam package {
+  BackgroundColor #F7F7F7
+  BorderColor #999999
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide circle
+hide empty members
+
+title Class Diagram Part 1 (Stage 2): GUI (MVC), CLI and Facade
+top to bottom direction
+package "GUI (JavaFX, MVC)" {
+  class TriageDeskApp <<JavaFX Application>> {
+    - tabs : TabPane
+    - tasks : FxUiTasks
+    --
+    + start(stage : Stage) : void
+    ~ openCase(caseId : String) : void
+  }
+  class GuiLauncher {
+    + main(args : String[]) : void
+  }
+  interface UiTasks <<interface>> {
+    + run(work : Callable<T>, onSuccess : Consumer<T>, onFailure : Consumer<Throwable>) : void
+  }
+  class FxUiTasks {
+    - worker : ExecutorService
+  }
+  interface MainView <<view>> {
+    + showImportDialog() : List<Path>
+    + showFiles(batchIds : List<String>) : void
+    + showCases(cases : List<Case>) : void
+    + showSummary(batchId : String, r : AgentResult) : void
+    + showMessage(msg : String) : void
+    + showError(msg : String) : void
+    + setBusy(busy : boolean, what : String) : void
+  }
+  interface CaseView <<view>> {
+    + render(c : Case) : void
+    + showReportPath(p : Path, warning : String) : void
+    + askEscalationReason() : Optional<String>
+    + askClose() : Optional<CloseRequest>
+    + showMessage(msg : String) : void
+    + showError(msg : String) : void
+  }
+  interface DashboardView <<view>> {
+    + render(s : DashboardStats, files : List<String>) : void
+  }
+  interface ChatView <<view>> {
+    + showAnswer(q : String, r : AgentResult, usage : String) : void
+  }
+  class MainViewFx
+  class CaseViewFx
+  class DashboardViewFx
+  class ChatViewFx
+  class MainController <<controller>> {
+    + refresh() : void
+    + onImport() : void
+    + onRunDetections() : void
+    + onSummarize(batchId : String) : void
+    + onOpenCase(caseId : String) : void
+  }
+  class CaseController <<controller>> {
+    - caseId : String
+    --
+    + load() : void
+    + onTriage() : void
+    + onEnrich() : void
+    + onMapAttack(askAgent : boolean) : void
+    + onChangeStatus(action : String) : void
+    + onAddNote(text : String) : void
+    + onRecommendResponse() : void
+    + onStepDone(step : int) : void
+    + onGenerateReport() : void
+  }
+  class DashboardController <<controller>> {
+    + refresh() : void
+  }
+  class ChatController <<controller>> {
+    + onAsk(question : String) : void
+  }
+}
+package "CLI (picocli)" {
+  class TriageDeskCli <<CLI>> {
+    + main(args : String[]) : void
+    ~ importFile(files : List<Path>) : int
+    ~ detect() : int
+    ~ cases() : int
+    ~ show(caseId) : int
+    ~ status(caseId, action, comment, resolution) : int
+    ~ note(caseId, words) : int
+    ~ enrich(caseId) : int
+    ~ map(caseId, askAgent) : int
+    ~ triage(caseId) : int
+    ~ respond(caseId) : int
+    ~ done(caseId, step) : int
+    ~ report(caseId, out) : int
+    ~ summarize(batchId) : int
+    ~ ask(words) : int
+    ~ stats() : int
+  }
+}
+package "Facade" {
+  class SocAssistant <<Facade>> {
+    + {static} create(config : AppConfig) : SocAssistant
+    + importFile(path : Path) : ImportResult
+    + listBatches() : List<String>
+    + runDetections() : DetectionResult
+    + listCases() : List<Case>
+    + getCase(caseId : String) : Case
+    + changeStatus(caseId, action, resolution, comment) : Case
+    + addNote(caseId : String, text : String) : Case
+    + enrichIocs(caseId : String) : List<Ioc>
+    + mapAttack(caseId : String, askAgent : boolean) : MappingResult
+    + triageCase(caseId : String) : TriageVerdict
+    + recommendResponse(caseId : String) : ResponsePlan
+    + markStepDone(caseId : String, step : int) : Case
+    + generateReport(caseId : String, out : Path) : ReportResult
+    + summarizeLog(batchId : String) : AgentResult
+    + ask(question : String) : AgentResult
+    + getDashboardStats() : DashboardStats
+    + getLastUsage() : TokenUsage
+  }
+  class ImportResult <<record>> {
+    batchId : String
+    format : String
+    imported : int
+    skipped : int
+  }
+  class DetectionResult <<record>> {
+    findings : int
+    cases : List<Case>
+    warnings : List<String>
+  }
+  class ReportResult <<record>> {
+    path : Path
+    aiNarrative : boolean
+    warning : String
+  }
+  note as FacadeNote
+    SocAssistant also holds EventStore, LogParserFactory,
+    DetectionEngine, CaseManager, EnrichmentService,
+    AttackMapper, ReportGenerator and a lazily created
+    SocAgent (see Parts 2 to 5).
+  end note
+}
+UiTasks <|.. FxUiTasks
+MainView <|.. MainViewFx
+CaseView <|.. CaseViewFx
+DashboardView <|.. DashboardViewFx
+ChatView <|.. ChatViewFx
+GuiLauncher ..> TriageDeskApp : launches
+TriageDeskApp *-- "1" MainController
+TriageDeskApp *-- "1" DashboardController
+TriageDeskApp *-- "1" ChatController
+TriageDeskApp *-- "*" CaseController : one per open case tab
+TriageDeskApp *-- "1" FxUiTasks
+MainController --> "1" MainView
+CaseController --> "1" CaseView
+DashboardController --> "1" DashboardView
+ChatController --> "1" ChatView
+MainController --> UiTasks
+CaseController --> UiTasks
+DashboardController --> UiTasks
+ChatController --> UiTasks
+MainController "*" --> "1" SocAssistant
+CaseController "*" --> "1" SocAssistant
+DashboardController "*" --> "1" SocAssistant
+ChatController "*" --> "1" SocAssistant
+TriageDeskCli "1" --> "1" SocAssistant
+SocAssistant ..> ImportResult : creates
+SocAssistant ..> DetectionResult : creates
+SocAssistant ..> ReportResult : creates
+FacadeNote .. SocAssistant
+@enduml

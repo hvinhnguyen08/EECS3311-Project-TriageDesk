@@ -1,0 +1,124 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam nodesep 30
+skinparam ranksep 40
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #333333
+  ArrowColor #333333
+}
+skinparam package {
+  BackgroundColor #F7F7F7
+  BorderColor #999999
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide circle
+hide empty members
+
+hide members
+title TriageDesk (Stage 2): class overview (members are shown in Parts 1 to 5)
+left to right direction
+package "GUI (MVC)" {
+  class TriageDeskApp
+  interface MainView
+  interface CaseView
+  interface DashboardView
+  interface ChatView
+  class MainController
+  class CaseController
+  class DashboardController
+  class ChatController
+  interface UiTasks
+}
+package "CLI" {
+  class TriageDeskCli
+}
+package "Facade" {
+  class SocAssistant <<Facade>>
+}
+package "Ingest" {
+  class LogParserFactory
+  interface LogParser
+  class EventStore
+}
+package "Detection" {
+  class DetectionEngine
+  interface Detector
+}
+package "Cases" {
+  class CaseManager
+  class Case
+  abstract class CaseState
+}
+package "Threat intel" {
+  class EnrichmentService
+  interface ThreatIntelProvider
+  abstract class RestIntelAdapter
+  class AbuseIpDbAdapter
+  class VirusTotalAdapter
+}
+package "ATT&CK" {
+  class AttackMapper
+}
+package "Report" {
+  class ReportGenerator
+}
+package "AI agent" {
+  class SocAgent
+  interface LlmClient
+  class OpenAiClient
+  class MockLlmClient
+  class ToolRegistry
+  interface Tool
+  class BatchScopedTool
+}
+TriageDeskApp *-- MainController
+TriageDeskApp *-- CaseController
+TriageDeskApp *-- DashboardController
+TriageDeskApp *-- ChatController
+MainController --> MainView
+CaseController --> CaseView
+DashboardController --> DashboardView
+ChatController --> ChatView
+MainController --> UiTasks
+MainController --> SocAssistant
+CaseController --> SocAssistant
+DashboardController --> SocAssistant
+ChatController --> SocAssistant
+TriageDeskCli --> SocAssistant
+SocAssistant --> EventStore
+SocAssistant --> LogParserFactory
+SocAssistant --> DetectionEngine
+SocAssistant --> CaseManager
+SocAssistant --> EnrichmentService
+SocAssistant --> AttackMapper
+SocAssistant --> ReportGenerator
+SocAssistant --> SocAgent
+LogParserFactory ..> LogParser : creates
+DetectionEngine o-- Detector
+CaseManager *-- Case
+Case --> CaseState
+EnrichmentService o-- ThreatIntelProvider
+ThreatIntelProvider <|.. RestIntelAdapter
+RestIntelAdapter <|-- AbuseIpDbAdapter
+RestIntelAdapter <|-- VirusTotalAdapter
+AttackMapper ..> SocAgent : AI suggestions
+SocAgent --> LlmClient
+LlmClient <|.. OpenAiClient
+LlmClient <|.. MockLlmClient
+SocAgent --> ToolRegistry
+ToolRegistry o-- Tool
+Tool <|.. BatchScopedTool
+Tool ..> EventStore : receiver
+Tool ..> EnrichmentService : receiver
+@enduml

@@ -1,0 +1,89 @@
+@startuml
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 230
+skinparam ParticipantPadding 6
+skinparam sequence {
+  ArrowColor #333333
+  LifeLineBorderColor #999999
+  ParticipantBorderColor #333333
+  ParticipantBackgroundColor #FFFFFF
+  ActorBorderColor #333333
+  ActorBackgroundColor #FFFFFF
+  GroupBorderColor #999999
+  GroupBackgroundColor #F7F7F7
+}
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #999999
+}
+hide footbox
+autonumber
+
+title SD06 (Stage 2) - Response Recommendations and Incident Report (F10, F11)
+actor "SOC Analyst" as Analyst
+boundary ":CaseViewFx" as View
+control ":CaseController" as Ctl
+participant ":SocAssistant" as SA
+participant ":CaseManager" as CM
+participant ":SocAgent" as Agent
+participant "llm:LlmClient" as LLM
+participant ":ReportGenerator" as RG
+participant "File system" as FS
+
+Analyst -> View : click "Recommend response"
+View -> Ctl : onRecommendResponse()
+Ctl -> SA : recommendResponse(caseId)
+SA -> CM : getCase(caseId)
+CM --> SA : c
+alt no verdict yet
+  SA --> Ctl : IllegalStateException("Run AI Triage first")
+  Ctl -> View : showError(...)
+else verdict FALSE_POSITIVE or BENIGN
+  SA -> SA : plan = one "document and close" step (no AI call)
+else TRUE_POSITIVE or NEEDS_REVIEW
+  SA -> Agent : recommendResponse(c)
+  Agent -> LLM : chat(RESPONSE prompt + caseFacts(c), no tools)
+  LLM --> Agent : {"steps":[{"action","reason"}]}
+  Agent -> Agent : parseSteps(text) (JSON, or a numbered/bulleted list)
+  Agent --> SA : ResponsePlan (or IllegalStateException if no steps)
+end
+SA -> CM : recordResponsePlan(caseId, plan)
+SA --> Ctl : plan
+Ctl -> View : render(c) (checklist with tick boxes)
+
+Analyst -> View : tick step 2
+View -> Ctl : onStepDone(2)
+Ctl -> SA : markStepDone(caseId, 2)
+SA -> CM : markStepDone(caseId, 2)
+CM -> CM : plan.markDone(1); recordHistory(); save(c)
+Ctl -> View : render(c)
+
+Analyst -> View : click "Generate report"
+View -> Ctl : onGenerateReport()
+Ctl -> SA : generateReport(caseId, reports/CASE-0001.md)
+SA -> Agent : writeNarrative(c)
+alt AI available
+  Agent -> LLM : chat(NARRATIVE prompt + caseFacts(c))
+  LLM --> Agent : "### Executive summary ... ### Analysis ..."
+  Agent --> SA : narrative
+else LlmException / no key
+  Agent --> SA : exception
+  SA -> SA : narrative = null, warning = "AI narrative unavailable: ..."
+end
+SA -> RG : generate(c, narrative, out)
+RG -> RG : render(c, narrative): case details, AI section (labelled),\nfindings, buildTimeline(c), IOCs, techniques, verdict, plan, notes, history
+RG -> FS : write Markdown
+alt write error
+  RG --> Ctl : UncheckedIOException("Could not write report ...")
+  Ctl -> View : showError(...)
+else
+  RG --> SA : path
+  SA --> Ctl : ReportResult(path, aiNarrative, warning)
+  Ctl -> View : showReportPath(path, warning) (link opens the file)
+end
+@enduml
