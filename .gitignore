@@ -10,6 +10,7 @@ target/
 # Runtime data written by the application
 data/
 reports/
+demo-data/
 
 # IDE and OS files
 .idea/
