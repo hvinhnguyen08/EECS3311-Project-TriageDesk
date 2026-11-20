@@ -39,6 +39,39 @@ mvn package
 
 `mvn package` runs the tests and builds `target/triagedesk.jar` with all dependencies (including JavaFX). `mvn test -Dgui.snapshots=true` also renders the GUI screens to `target/gui-snapshots/*.png` (needs a display).
 
+### Testing
+
+| Command | What it does | Output |
+|---|---|---|
+| `mvn test` | runs all JUnit 5 tests (unit and integration); no network, no API key needed (the agent tests use `MockLlmClient`) | console summary; one report per test class in `target/surefire-reports/` |
+| `mvn verify` | runs the tests and writes the JaCoCo coverage report | `target/site/jacoco/index.html` (per package and class), `target/site/jacoco/jacoco.csv` |
+| `mvn test -Dgui.snapshots=true` | also runs the 3 GUI snapshot tests, which render every screen with sample data (skipped by default; needs a display) | `target/gui-snapshots/*.png` |
+| `mvn test -Dtest=CaseManagerTest` | runs one test class (`-Dtest=Class#method` for one test) | |
+
+Agent behaviour tests (Part B of Stage 3) run through KUMA from the `kuma/` folder; their setup is described there once it is added.
+
+Baseline before Stage 3 testing (Nov 20, 2026, `mvn verify`): **202 tests in 39 classes, 0 failures, 0 errors, 3 skipped** (the GUI snapshot tests). Coverage:
+
+| Package | Line coverage | Branch coverage |
+|---|---|---|
+| agent | 94% (546/580) | 81% (232/286) |
+| attack | 95% (55/58) | 89% (25/28) |
+| casemgmt | 98% (238/243) | 91% (81/89) |
+| cli | 91% (176/193) | 76% (52/68) |
+| config | 92% (84/91) | 76% (41/54) |
+| detect | 97% (166/171) | 94% (83/88) |
+| domain | 98% (240/244) | 77% (112/146) |
+| facade | 98% (127/130) | 86% (36/42) |
+| gui controllers and models | 87% (186/213) | 68% (34/50) |
+| gui JavaFX views (`*Fx`, `TriageDeskApp`, `GuiLauncher`) | 0% (0/612): only exercised by the snapshot tests | 0% (0/96) |
+| ingest | 94% (310/329) | 85% (144/169) |
+| intel | 87% (197/226) | 82% (111/135) |
+| report | 100% (107/107) | 83% (38/46) |
+| **All code** | **76.1% (2437/3202)** | **76.3% (989/1297)** |
+| **All code except the JavaFX views** | **94.1% (2437/2590)** | **82.3% (989/1201)** |
+
+High line coverage does not mean the boundaries are tested: most of the existing tests follow the normal path. Stage 3 adds boundary, invalid-input and error-path tests per component, and the counts above are updated as they land.
+
 ### Graphical interface
 
 ```
